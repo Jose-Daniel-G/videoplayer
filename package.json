@@ -1,0 +1,16 @@
+{
+  "name": "remanente-player",
+  "version": "1.0.0",
+  "main": "main.js",
+  "description": "Reproductor Multimedia Remanente",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.0.0",
+    "@electron-forge/maker-squirrel": "^7.0.0",
+    "electron": "^30.0.0"
+  }
+}
