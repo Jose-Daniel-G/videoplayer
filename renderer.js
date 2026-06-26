@@ -294,11 +294,12 @@ if (videoPlayer) {
   videoPlayer.addEventListener('timeupdate', () => {
     if (!videoPlayer.duration) return;
     const pct = (videoPlayer.currentTime / videoPlayer.duration) * 100;
-    const progressFill = document.getElementById('progress-fill');
-    const timeCurrent = document.getElementById('time-current');
+    const progressFill = document.getElementById('video-progress-fill');
+    const timeCurrent  = document.getElementById('video-time-current');
     
     if (progressFill) progressFill.style.width = pct + '%';
-    if (timeCurrent) timeCurrent.textContent = formatTime(videoPlayer.currentTime);
+    if (timeCurrent)  timeCurrent.textContent =
+      formatTime(videoPlayer.currentTime) + ' / ' + formatTime(videoPlayer.duration);
   });
 
   videoPlayer.addEventListener('ended', () => {
@@ -312,9 +313,9 @@ if (videoPlayer) {
 }
 
 function updatePlayPauseUI() {
-  const iconPlay = document.getElementById('icon-play');
-  const iconPause = document.getElementById('icon-pause');
-  if (iconPlay) iconPlay.classList.toggle('hidden', isPlaying);
+  const iconPlay  = document.getElementById('vid-icon-play');
+  const iconPause = document.getElementById('vid-icon-pause');
+  if (iconPlay)  iconPlay.classList.toggle('hidden', isPlaying);
   if (iconPause) iconPause.classList.toggle('hidden', !isPlaying);
 }
 
@@ -407,10 +408,13 @@ async function actionDownloadYoutube() {
         if (result.success) {
             showDownloadStatus("¡Video descargado e indexado con éxito!", "success");
             inputUrl.value = ""; // Limpiar input
-            
-            // Si tu renderer.js tiene un método para recargar la lista de videos guardados, 
-            // puedes llamarlo aquí, por ejemplo:
-            // if (typeof loadSavedTracks === 'function') loadSavedTracks();
+
+            // Recargar la lista de videos locales para que el nuevo aparezca
+            const media = await window.electronAPI.getLocalMedia();
+            localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
+            initDefaults();
+            renderPlaylist();
+            updateDownloadedLocalList();
             
         } else {
             showDownloadStatus("Error al descargar: " + result.error, "error");
@@ -438,4 +442,88 @@ function showDownloadStatus(message, type) {
             statusDiv.style.display = 'none';
         }, 5000);
     }
+}
+/* ─── Tab switch ─── */
+// ─── 1. FUNCIÓN PARA CONTROLAR EL CAMBIO DE PESTAÑAS (TABS) ───
+function switchMainTab(tab) {
+  // Cambiar clases activas en los botones
+  document.getElementById('tab-video').classList.toggle('active', tab === 'video');
+  document.getElementById('tab-download').classList.toggle('active', tab === 'download');
+
+  // Alternar pantallas visibles
+  document.getElementById('screen-video').classList.toggle('hidden', tab !== 'video');
+  document.getElementById('screen-download').classList.toggle('hidden', tab !== 'download');
+
+  // Ajustar el título superior de la lista derecha
+  document.getElementById('playlist-label').textContent = tab === 'video' ? 'Lista de Videos' : 'Historial de Reproducción';
+
+  // Si pasamos a la pestaña de descarga, refrescamos la lista de videos locales
+  if (tab === 'download') {
+    updateDownloadedLocalList();
+  }
+}
+
+// ─── 2. EXTRAER MINIATURA DE YOUTUBE EN VIVO CUANDO EL USUARIO PEGA LA URL ───
+function handleYoutubeUrlInput(url) {
+  const previewContainer = document.getElementById('yt-preview-container');
+  const previewImg = document.getElementById('yt-preview-img');
+  const previewTitle = document.getElementById('yt-preview-title');
+
+  // Expresión regular para capturar la ID del video de YouTube de cualquier enlace común
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+
+  if (match && match[2].length === 11) {
+    const videoId = match[2];
+    // Usamos el servidor de imágenes oficial de YouTube de alta definición (hqdefault)
+    previewImg.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    previewTitle.textContent = "Video Listo para Descargar 🎥";
+    previewContainer.style.display = 'block'; // Mostrar la caja
+  } else {
+    // Si borra el input o es inválido, ocultamos la miniatura
+    previewContainer.style.display = 'none';
+  }
+}
+
+// ─── 4. ACTUALIZAR LOS VIDEOS RECIÉN DESCARGADOS EN LA CARPETA LOCAL ───
+async function updateDownloadedLocalList() {
+  const listContainer = document.getElementById('downloaded-local-list');
+  if (!listContainer) return;
+
+  try {
+    // Llamamos al canal IPC nativo de tu main.js que lee el directorio
+    const data = await window.electronAPI.getLocalMedia();
+    
+    if (data && data.videos && data.videos.length > 0) {
+      listContainer.innerHTML = ""; // Limpiar indicador de carga
+      
+      // Listamos los últimos videos encontrados en la carpeta local
+      data.videos.forEach(video => {
+        const item = document.createElement('div');
+        item.className = "local-download-item";
+        item.title = video.name;
+        item.innerHTML = `📄 ${video.name}`;
+        listContainer.appendChild(item);
+      });
+    } else {
+      listContainer.innerHTML = `<p style="font-size:0.68rem; color:var(--pearl-muted);">No se encontraron videos descargados aún.</p>`;
+    }
+  } catch (error) {
+    console.error("Error cargando videos locales:", error);
+    listContainer.innerHTML = `<p style="font-size:0.68rem; color:#f87171;">No se pudo leer la carpeta local.</p>`;
+  }
+}
+
+// Función auxiliar estética de alertas de estado
+function showDownloadStatus(message, type) {
+  const statusDiv = document.getElementById('download-status');
+  statusDiv.style.display = 'block';
+  statusDiv.textContent = message;
+  statusDiv.className = "download-status " + type;
+
+  if (type === 'success' || type === 'error') {
+    setTimeout(() => {
+      statusDiv.style.display = 'none';
+    }, 6000);
+  }
 }

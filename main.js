@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 // Importamos el descargador profesional
 const ytDlp = require('youtube-dl-exec'); 
 
@@ -80,7 +81,9 @@ ipcMain.handle('download-youtube', async (event, youtubeUrl) => {
       format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       noCheckCertificates: true,
       noWarnings: true,
-      preferFreeFormats: true
+      preferFreeFormats: true,
+      mergeOutputFormat: 'mp4',
+      ffmpegLocation: path.join(__dirname, 'bin', 'ffmpeg.exe')
     });
 
     return { success: true };
@@ -108,7 +111,7 @@ ipcMain.handle('get-local-media', async () => {
             result.videos.push({
               name:   path.parse(file).name,
               author: 'Predicación',
-              url:    'file://' + filePath
+              url:    pathToFileURL(filePath).href
             });
           }
         }
@@ -158,7 +161,9 @@ ipcMain.handle('download-youtube-video', async (event, youtubeUrl) => {
       format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', // Prioriza mp4 nativo de buena calidad
       noCheckCertificates: true,
       noWarnings: true,
-      preferFreeFormats: true
+      preferFreeFormats: true,
+      mergeOutputFormat: 'mp4',
+      ffmpegLocation: path.join(__dirname, 'bin', 'ffmpeg.exe')
     });
 
     return { success: true, message: 'Video descargado con éxito en tu carpeta por defecto.' };

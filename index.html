@@ -5,648 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Remanente del Dios Vivo y Eterno — Multimedia</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
 <style>
-  :root {
-    --navy: #0B1628;
-    --navy-mid: #162236;
-    --navy-light: #1E304A;
-    --navy-card: #192B40;
-    --blue: #2033A0;
-    --blue-light: #3A4DC4;
-    --blue-glow: rgba(32,51,160,0.35);
-    --gold: #C9A84C;
-    --gold-light: #E8C96A;
-    --gold-dim: #8B6F2E;
-    --gold-glow: rgba(201,168,76,0.18);
-    --pearl: #F0EAD8;
-    --pearl-dim: #B8AF98;
-    --pearl-muted: #7A7265;
-    --glass: rgba(255,255,255,0.05);
-    --glass-border: rgba(201,168,76,0.18);
-    --glass-border-strong: rgba(201,168,76,0.35);
-    --item-hover: rgba(32,51,160,0.12);
-    --item-active: rgba(32,51,160,0.22);
-    --separator: rgba(255,255,255,0.05);
-    --scrollbar: rgba(32,51,160,0.4);
-    --transition: 0.2s ease;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background: var(--navy);
-    font-family: 'Lato', sans-serif;
-    color: var(--pearl);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Ambient glow en el fondo */
-  body::before {
-    content: '';
-    position: fixed;
-    top: -20%; left: 50%;
-    transform: translateX(-50%);
-    width: 900px; height: 600px;
-    background: radial-gradient(ellipse at center, rgba(32,51,160,0.12) 0%, transparent 70%);
-    pointer-events: none; z-index: 0;
-  }
-  body::after {
-    content: '';
-    position: fixed;
-    bottom: -10%; left: 50%;
-    transform: translateX(-50%);
-    width: 600px; height: 400px;
-    background: radial-gradient(ellipse at center, rgba(201,168,76,0.06) 0%, transparent 70%);
-    pointer-events: none; z-index: 0;
-  }
-
-  .app {
-    position: relative; z-index: 1;
-    max-width: 1260px;
-    margin: 0 auto;
-    padding: 1.5rem 1.5rem 3rem;
-  }
-
-  /* ─── Header ─── */
-  header {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--glass-border);
-    position: relative;
-  }
-
-  .logo-wrap {
-    width: 78px; height: 78px;
-    flex-shrink: 0;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid var(--gold-dim);
-    box-shadow: 0 0 28px rgba(201,168,76,0.2), 0 0 60px rgba(32,51,160,0.3);
-    position: relative;
-  }
-  .logo-wrap::after {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: 50%;
-    box-shadow: inset 0 0 12px rgba(0,0,0,0.4);
-  }
-  .logo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-  .header-text { flex: 1; }
-
-  header h1 {
-    font-family: 'Cinzel', serif;
-    font-size: 1.45rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    color: var(--gold);
-    text-transform: uppercase;
-    line-height: 1.2;
-    text-shadow: 0 0 40px rgba(201,168,76,0.3);
-  }
-
-  header p {
-    font-size: 0.72rem;
-    color: var(--pearl-muted);
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    margin-top: 0.3rem;
-  }
-
-  .gold-rule {
-    width: 56px; height: 1.5px;
-    background: linear-gradient(to right, transparent, var(--gold), transparent);
-    margin-top: 0.6rem;
-    opacity: 0.7;
-  }
-
-  /* Status indicator en header */
-  .now-badge {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.4rem 0.9rem;
-    background: rgba(32,51,160,0.15);
-    border: 1px solid rgba(32,51,160,0.3);
-    border-radius: 20px;
-    font-size: 0.68rem;
-    color: var(--pearl-dim);
-    letter-spacing: 0.05em;
-    flex-shrink: 0;
-  }
-  .now-badge .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--blue-light);
-    animation: pulse-dot 2s ease infinite;
-  }
-  .now-badge.playing .dot { background: var(--gold); }
-  @keyframes pulse-dot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.7); }
-  }
-
-  /* ─── Tabs ─── */
-  .tabs {
-    display: flex;
-    background: rgba(0,0,0,0.25);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 1.5rem;
-    padding: 3px;
-    gap: 3px;
-  }
-
-  .tab-btn {
-    flex: 1; padding: 0.7rem 1rem;
-    background: transparent; border: none;
-    color: var(--pearl-muted);
-    font-family: 'Cinzel', serif;
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    transition: all var(--transition);
-    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    border-radius: 9px;
-  }
-
-  .tab-btn.active {
-    background: var(--item-active);
-    color: var(--gold);
-    box-shadow: inset 0 0 0 1px rgba(201,168,76,0.2);
-  }
-
-  .tab-btn:not(.active):hover {
-    background: var(--glass);
-    color: var(--pearl-dim);
-  }
-
-  /* ─── Main layout ─── */
-  .main-layout {
-    display: grid;
-    grid-template-columns: 1fr 370px;
-    gap: 1.5rem;
-    align-items: start;
-  }
-
-  @media (max-width: 860px) {
-    .main-layout { grid-template-columns: 1fr; }
-    header { flex-direction: column; text-align: center; }
-    .gold-rule { margin: 0.6rem auto 0; }
-    .now-badge { display: none; }
-  }
-
-  /* ─── Player card ─── */
-  .player-card {
-    background: var(--navy-card);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-  }
-
-  /* ─── Video screen ─── */
-  .video-wrapper {
-    position: relative;
-    background: #000;
-    aspect-ratio: 16/9;
-    overflow: hidden;
-  }
-
-  #video-player {
-    width: 100%; height: 100%;
-    display: block; object-fit: contain;
-  }
-
-  /* Overlay de controles en hover */
-  .video-overlay-controls {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, rgba(11,22,40,0.96));
-    padding: 1.5rem 1.4rem 1rem;
-    display: flex; flex-direction: column; gap: 8px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 5;
-  }
-
-  .video-wrapper:hover .video-overlay-controls { opacity: 1; }
-
-  /* Barra de progreso del video */
-  .vid-progress {
-    width: 100%; height: 4px;
-    background: rgba(255,255,255,0.15);
-    border-radius: 4px; cursor: pointer;
-    position: relative;
-    transition: height 0.15s;
-  }
-  .vid-progress:hover { height: 6px; }
-
-  .vid-progress-fill {
-    height: 100%;
-    background: linear-gradient(to right, var(--gold), var(--gold-light));
-    border-radius: 4px; width: 0%; pointer-events: none;
-    position: relative;
-    transition: width 0.1s linear;
-  }
-
-  .vid-progress-fill::after {
-    content: ''; position: absolute; right: -6px; top: 50%;
-    transform: translateY(-50%);
-    width: 14px; height: 14px;
-    background: var(--pearl);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(201,168,76,0.8);
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-
-  .vid-progress:hover .vid-progress-fill::after { opacity: 1; }
-
-  .vid-meta {
-    display: flex; align-items: center; justify-content: space-between;
-  }
-
-  /* ─── Music screen ─── */
-  .music-screen {
-    aspect-ratio: 16/9;
-    background: linear-gradient(160deg, var(--navy-card) 0%, var(--navy-light) 100%);
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 1rem; padding: 2rem;
-    position: relative; overflow: hidden;
-  }
-
-  .music-screen::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: radial-gradient(ellipse at 50% 80%, rgba(32,51,160,0.2) 0%, transparent 70%);
-    pointer-events: none;
-  }
-
-  .album-art {
-    width: 100px; height: 100px;
-    background: linear-gradient(135deg, var(--navy-light), var(--navy-mid));
-    border: 2px solid rgba(58,77,196,0.5);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    position: relative; overflow: hidden;
-    box-shadow: 0 0 0 6px rgba(32,51,160,0.12), 0 0 30px rgba(32,51,160,0.3);
-    z-index: 1;
-  }
-
-  .album-art.spinning { animation: spin 8s linear infinite; }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  .album-art .logo-inner { width: 78px; height: 78px; object-fit: contain; border-radius: 50%; }
-
-  .visualizer {
-    display: flex; align-items: flex-end; gap: 3px; height: 40px;
-    z-index: 1;
-  }
-
-  .bar {
-    width: 4px;
-    background: linear-gradient(to top, var(--blue), var(--blue-light));
-    border-radius: 3px 3px 0 0;
-    min-height: 4px;
-    transition: height 0.1s ease;
-    opacity: 0.8;
-  }
-
-  .now-playing-title {
-    font-family: 'Cinzel', serif;
-    font-size: 0.9rem;
-    color: var(--pearl);
+  /* Estilos rápidos para las nuevas secciones de previsualización y lista */
+  .yt-preview-box {
+    margin-bottom: 15px;
     text-align: center;
-    letter-spacing: 0.05em;
-    z-index: 1;
-    max-width: 90%;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px dashed var(--glass-border-strong, #C9A84C);
+    display: none; /* Se muestra dinámicamente con JS */
+  }
+  .yt-preview-box img {
+    width: 100%;
+    max-width: 240px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    margin-bottom: 8px;
+  }
+  .yt-preview-box p {
+    font-size: 0.75rem;
+    color: #E8C96A;
+    font-weight: bold;
+  }
+  .local-downloads-container {
+    margin-top: 15px;
+    text-align: left;
+    width: 100%;
+  }
+  .local-downloads-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.72rem;
+    color: #C9A84C;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 4px;
+  }
+  .local-download-item {
+    font-size: 0.72rem;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .now-playing-sub {
-    font-size: 0.7rem;
-    color: var(--pearl-muted);
-    text-align: center;
-    z-index: 1;
-  }
-
-  /* ctrl-btn usado dentro del overlay de video */
-  .ctrl-btn {
-    background: transparent; border: none; cursor: pointer;
-    color: var(--pearl-muted); padding: 0.45rem; border-radius: 50%;
-    transition: color var(--transition), background var(--transition), transform 0.1s;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .ctrl-btn:active { transform: scale(0.9); }
-  .ctrl-btn.active { color: var(--gold); }
-
-  /* ─── Playlist card ─── */
-  .playlist-card {
-    background: var(--navy-card);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    overflow: hidden;
-    display: flex; flex-direction: column;
-    max-height: 640px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-  }
-
-  .playlist-header {
-    padding: 1rem 1.2rem 0.8rem;
-    border-bottom: 1px solid var(--separator);
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 0.5rem;
-    background: rgba(0,0,0,0.1);
-  }
-
-  .playlist-header h2 {
-    font-family: 'Cinzel', serif;
-    font-size: 0.76rem;
-    letter-spacing: 0.14em;
-    color: var(--gold);
-    text-transform: uppercase;
-  }
-
-  .playlist-count {
-    font-size: 0.65rem; color: var(--pearl-muted);
-    background: rgba(0,0,0,0.2);
-    padding: 2px 8px; border-radius: 10px;
-    border: 1px solid var(--separator);
-  }
-
-  /* Filtros + búsqueda */
-  .playlist-controls {
-    padding: 0.75rem 1rem 0;
-    display: flex; flex-direction: column; gap: 0.5rem;
-    border-bottom: 1px solid var(--separator);
-    padding-bottom: 0.75rem;
-  }
-
-  .list-filters {
-    display: flex; gap: 0.35rem;
-    background: rgba(0,0,0,0.2);
-    padding: 3px;
-    border-radius: 8px;
-  }
-
-  .filter-btn {
-    flex: 1; padding: 0.4rem 0.5rem;
-    background: transparent; border: none;
-    color: var(--pearl-muted);
-    font-family: 'Lato', sans-serif;
-    font-size: 0.68rem; letter-spacing: 0.02em;
-    cursor: pointer; border-radius: 6px;
-    transition: all var(--transition); font-weight: 600;
-  }
-
-  .filter-btn:hover { color: var(--pearl-dim); background: var(--glass); }
-
-  .filter-btn.active {
-    background: var(--item-active);
-    color: var(--gold);
-    box-shadow: inset 0 0 0 1px rgba(201,168,76,0.15);
-  }
-
-  .search-box {
-    display: flex; align-items: center; gap: 0.5rem;
-    background: rgba(0,0,0,0.2);
-    border: 1px solid var(--separator);
-    border-radius: 8px;
-    padding: 0.45rem 0.7·rem;
-    transition: border-color var(--transition);
-  }
-
-  .search-box:focus-within { border-color: rgba(201,168,76,0.35); }
-  .search-box svg { color: var(--pearl-muted); flex-shrink: 0; }
-
-  .search-box input {
-    flex: 1; background: transparent; border: none; outline: none;
-    color: var(--pearl); font-family: 'Lato', sans-serif; font-size: 0.76rem;
-  }
-
-  .search-box input::placeholder { color: var(--pearl-muted); }
-
-  /* ─── NUEVOS ESTILOS INTERNOS PARA LA CAJA DE YOUTUBE ─── */
-  .download-box {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
-    padding: 10px;
-  }
-  .download-control-group {
-    display: flex;
-    gap: 6px;
-  }
-  .download-input {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--separator);
-    color: var(--pearl);
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    outline: none;
-    transition: border-color var(--transition);
-  }
-  .download-input:focus {
-    border-color: var(--gold-dim);
-  }
-  .btn-download {
-    background: var(--blue);
-    color: #fff;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.72rem;
-    font-weight: bold;
-    font-family: 'Lato', sans-serif;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: background var(--transition);
-  }
-  .btn-download:hover {
-    background: var(--blue-light);
-  }
-  .btn-download:disabled {
-    background: var(--navy-light);
-    color: var(--pearl-muted);
-    cursor: not-allowed;
-  }
-  .download-status {
-    margin-top: 8px;
-    font-size: 0.68rem;
-    padding: 4px 8px;
-    border-radius: 4px;
-    text-align: center;
-  }
-  .download-status.loading { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
-  .download-status.success { color: #4ade80; background: rgba(74, 222, 128, 0.1); }
-  .download-status.error   { color: #f87171; background: rgba(248, 113, 113, 0.1); }
-
-  /* Fila de acciones */
-  .actions-row {
-    padding: 0.6rem 1rem;
-    border-bottom: 1px solid var(--separator);
-    display: flex; gap: 0.4rem; flex-wrap: wrap;
-    background: rgba(0,0,0,0.08);
-  }
-
-  .action-btn {
-    display: flex; align-items: center; gap: 0.3rem;
-    padding: 0.38rem 0.7rem;
-    background: rgba(32,51,160,0.1);
-    border: 1px solid rgba(32,51,160,0.3);
-    border-radius: 6px; color: var(--pearl-dim);
-    cursor: pointer; font-size: 0.66rem;
-    font-family: 'Lato', sans-serif;
-    transition: all var(--transition);
-    white-space: nowrap;
-  }
-
-  .action-btn:hover { background: rgba(32,51,160,0.22); border-color: var(--gold-dim); color: var(--pearl); }
-  .action-btn.export { background: rgba(201,168,76,0.08); border-color: rgba(201,168,76,0.25); color: var(--gold-dim); }
-  .action-btn.export:hover { background: rgba(201,168,76,0.18); border-color: var(--gold); color: var(--gold); }
-  .action-btn.danger { background: rgba(180,40,40,0.08); border-color: rgba(180,40,40,0.25); color: #cc6666; }
-  .action-btn.danger:hover { background: rgba(180,40,40,0.2); border-color: #cc4444; color: #ff8888; }
-
-  /* Lista de items */
-  .playlist-list {
-    overflow-y: auto; flex: 1;
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar) transparent;
-  }
-
-  .playlist-list::-webkit-scrollbar { width: 5px; }
-  .playlist-list::-webkit-scrollbar-track { background: transparent; }
-  .playlist-list::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
-
-  .playlist-item {
-    display: flex; align-items: center; gap: 0.65rem;
-    padding: 0.6rem 1rem; cursor: pointer;
-    transition: background var(--transition);
-    border-bottom: 1px solid var(--separator);
-    position: relative;
-  }
-
-  .playlist-item:hover { background: var(--item-hover); }
-
-  .playlist-item.active {
-    background: var(--item-active);
-    border-left: 2px solid var(--blue-light);
-  }
-
-  .item-num {
-    font-size: 0.65rem; color: var(--pearl-muted);
-    min-width: 20px; text-align: center; flex-shrink: 0;
-  }
-
-  .playing-icon { display: none; }
-  .playlist-item.active .playing-icon { display: flex; align-items: center; }
-  .playlist-item.active .idx-num { display: none; }
-
-  .item-thumb {
-    width: 36px; height: 36px; border-radius: 8px;
-    background: var(--navy-light); flex-shrink: 0;
-    overflow: hidden; display: flex; align-items: center; justify-content: center;
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-
-  .playlist-item.active .item-thumb {
-    background: rgba(32,51,160,0.3);
-    border-color: rgba(58,77,196,0.4);
-  }
-
-  .item-info { flex: 1; min-width: 0; }
-
-  .item-info strong {
-    display: block; font-size: 0.74rem; color: var(--pearl);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    font-weight: 700; transition: color var(--transition);
-  }
-
-  .item-info span { font-size: 0.63rem; color: var(--pearl-muted); }
-
-  .playlist-item.active .item-info strong { color: var(--gold); }
-
-  .item-dur { font-size: 0.62rem; color: var(--pearl-muted); flex-shrink: 0; }
-
-  .action-icon {
-    padding: 0.3rem; border-radius: 4px;
-    color: var(--pearl-muted); opacity: 0.4;
-    transition: all var(--transition); flex-shrink: 0;
-    cursor: pointer;
-  }
-
-  .action-icon:hover { opacity: 1; color: var(--gold); background: var(--gold-glow); }
-  .action-icon.saved { opacity: 1; color: var(--gold); }
-
-  .empty-state {
-    padding: 2.5rem 1.5rem; text-align: center;
-    color: var(--pearl-muted); font-size: 0.76rem; line-height: 1.7;
-  }
-
-  .empty-state svg { opacity: 0.25; margin-bottom: 1rem; }
-  .empty-state p { max-width: 220px; margin: 0 auto; }
-
-  .vid-volume-slider {
-    -webkit-appearance: none;
-    width: 64px; height: 3px;
-    background: rgba(255,255,255,0.25);
-    border-radius: 4px; cursor: pointer; outline: none;
-  }
-  .vid-volume-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 11px; height: 11px;
-    border-radius: 50%;
-    background: var(--gold);
-    cursor: pointer;
-  }
-
-  .vid-play-btn {
-    background: var(--gold) !important;
-    color: var(--navy) !important;
-    border-radius: 50% !important;
-    width: 36px; height: 36px;
-    box-shadow: 0 0 14px rgba(201,168,76,0.4);
-  }
-
-  #btn-shuffle.active, #btn-repeat.active { color: var(--gold) !important; }
-
-  /* Overlay siempre visible (quitar hover) */
-  .video-wrapper:hover .video-overlay-controls { opacity: 1; }
-
-  /* ─── Helpers ─── */
-  .hidden { display: none !important; }
-
-  /* ─── Fullscreen ─── */
-  .video-wrapper:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: unset; background: #000; }
-  .video-wrapper:fullscreen { width: 100vw; height: 100vh; aspect-ratio: unset; background: #000; }
-
-  /* Ctrl pequeño dentro del overlay video */
-  .vid-ctrl-btn {
-    background: transparent; border: none; cursor: pointer;
-    color: rgba(255,255,255,0.7); padding: 0.3rem; border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s;
-  }
-  .vid-ctrl-btn:hover { color: var(--gold); background: rgba(255,255,255,0.08); }
-
-  /* ─── Animación de entrada ─── */
-  .player-card, .playlist-card {
-    animation: fadeUp 0.4s ease both;
-  }
-  .playlist-card { animation-delay: 0.08s; }
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
+    color: #B8AF98;
+    border-left: 2px solid #2033A0;
   }
 </style>
 </head>
@@ -668,6 +76,17 @@
     </div>
   </header>
 
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchMainTab('video')" id="tab-video">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      Videos
+    </button>
+    <button class="tab-btn" onclick="switchMainTab('download')" id="tab-download">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      Descargar
+    </button>
+  </div>
+  
   <div class="main-layout">
 
     <div class="player-card">
@@ -676,7 +95,6 @@
         <video id="video-player" preload="metadata" onclick="togglePlay()"></video>
 
         <div class="video-overlay-controls" id="video-overlay-controls" style="opacity:1;">
-
           <div style="text-align:center; margin-bottom:2px;">
             <span id="track-title-vid" style="font-size:0.75rem; color:var(--pearl); font-family:'Cinzel',serif; letter-spacing:0.04em;"></span>
           </div>
@@ -728,39 +146,45 @@
         </div>
       </div>
 
-      <div id="screen-music" class="music-screen hidden">
-        <div class="album-art" id="album-art">
-          <img class="logo-inner" src="assets/imresizer-logo.jpg" alt="Logo" onerror="this.style.display='none'">
+      <div id="screen-download" class="music-screen hidden" style="justify-content: flex-start; padding-top: 1.5rem; overflow-y: auto;">
+        
+        <div id="yt-preview-container" class="yt-preview-box">
+          <img id="yt-preview-img" src="" alt="Miniatura de YouTube">
+          <p id="yt-preview-title">Detectando video...</p>
         </div>
-        <div>
-          <div class="now-playing-title" id="music-title">Selecciona una canción</div>
-          <div class="now-playing-sub" id="music-sub">—</div>
+
+        <div class="download-box" style="width: 100%; max-width: 500px;">
+          <div class="download-control-group">
+            <input 
+              type="text" 
+              id="youtube-url-input" 
+              placeholder="Pegar enlace de YouTube aquí..." 
+              class="download-input"
+              oninput="handleYoutubeUrlInput(this.value)"
+            />
+            <button id="btn-download-yt" class="btn-download" onclick="actionDownloadYoutube()">
+              <span class="icon">📥</span> Descargar
+            </button>
+          </div>
+          <div id="download-status" class="download-status" style="display: none;"></div>
         </div>
-        <div class="visualizer" id="visualizer">
-          <div class="bar" style="height:8px" id="b1"></div><div class="bar" style="height:16px" id="b2"></div>
-          <div class="bar" style="height:24px" id="b3"></div><div class="bar" style="height:32px" id="b4"></div>
-          <div class="bar" style="height:20px" id="b5"></div><div class="bar" style="height:12px" id="b6"></div>
-          <div class="bar" style="height:28px" id="b7"></div><div class="bar" style="height:20px" id="b8"></div>
-          <div class="bar" style="height:16px" id="b9"></div><div class="bar" style="height:10px" id="b10"></div>
-          <div class="bar" style="height:22px" id="b11"></div><div class="bar" style="height:30px" id="b12"></div>
+
+        <div class="local-downloads-container">
+          <div class="local-downloads-title">Videos en Carpeta de Alabanzas</div>
+          <div id="downloaded-local-list">
+            <p style="font-size:0.68rem; color:var(--pearl-muted);">Cargando archivos locales...</p>
+          </div>
         </div>
       </div>
 
       <audio id="audio-player" preload="metadata"></audio>
-
       <span id="sermon-badge" style="display:none"></span>
       <span id="track-title" style="display:none"></span>
       <span id="track-author" style="display:none"></span>
       <div id="progress-bg" style="display:none"><div id="progress-fill"></div></div>
       <span id="time-current" style="display:none"></span>
       <span id="time-total" style="display:none"></span>
-      <button id="play-pause-btn" style="display:none" onclick="togglePlay()">
-        <span id="icon-play"></span><span id="icon-pause"></span>
-      </button>
-      <button id="mute-btn" style="display:none" onclick="toggleMute()">
-        <span id="icon-volume"></span><span id="icon-mute"></span>
-      </button>
-      <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.85" style="display:none" oninput="setVolume(this.value)">
+      <button id="play-pause-btn" style="display:none" onclick="togglePlay()"></button>
     </div>
 
     <div class="playlist-card">
@@ -769,22 +193,6 @@
         <span class="playlist-count" id="playlist-count">0 elementos</span>
       </div>
 
-      <div class="playlist-controls" style="border-bottom: none; padding-bottom: 0;">
-        <div class="download-box">
-          <div class="download-control-group">
-            <input 
-              type="text" 
-              id="youtube-url-input" 
-              placeholder="Pegar enlace de YouTube aquí... (https://...)" 
-              class="download-input"
-            />
-            <button id="btn-download-yt" class="btn-download" onclick="actionDownloadYoutube()">
-              <span class="icon">📥</span> Descargar
-            </button>
-          </div>
-          <div id="download-status" class="download-status" style="display: none;"></div>
-        </div>
-      </div>
       <div class="playlist-controls">
         <div class="list-filters">
           <button class="filter-btn active" id="btn-filter-all" onclick="setListScope('all')">Todos</button>
@@ -806,7 +214,6 @@
           Borrar
         </button>
         <input type="file" id="file-input" multiple accept="video/*" style="display:none">
-        <input type="file" id="txt-input" accept=".txt" style="display:none">
       </div>
 
       <div class="playlist-list" id="playlist-list"></div>
