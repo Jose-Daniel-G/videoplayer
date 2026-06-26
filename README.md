@@ -26,3 +26,8 @@ git rm -r --cached videos/ --ignore-unmatch
 
 ### Borrar la carpeta oculta de Git dañada
 Remove-Item -Recurse -Force .git
+
+## Install
+Ve a tu carpeta dist/. Ahora verás un archivo comprimido llamado RemanenteMultimedia-1.0.0-win.exe.
+
+Para que funcione desactiva Smart App Control.

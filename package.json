@@ -14,7 +14,11 @@
   "build": {
     "appId": "com.remanente.player",
     "productName": "RemanenteMultimedia",
+    "linux": {
+      "icon": "assets/imresizer-logo.png"
+    },
     "win": {
+      "icon": "assets/imresizer-logo.ico",
       "target": [
         "nsis"
       ]
@@ -23,7 +27,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Remanente Multimedia"
+      "shortcutName": "Remanente Multimedia",
+      "installerIcon": "assets/imresizer-logo.ico",
+      "uninstallerIcon": "assets/imresizer-logo.ico"
     },
     "files": [
       "**/*",
@@ -34,7 +40,9 @@
       {
         "from": "videos",
         "to": "../videos",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
