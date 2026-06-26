@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 // Importamos el descargador profesional
-const ytDlp = require('youtube-dl-exec'); 
+const ytDlp = require('youtube-dl-exec');
 
 let mainWindow;
 
@@ -41,23 +41,23 @@ function loadConfig() {
   try {
     const p = getConfigPath();
     if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch (e) {}
-  
+  } catch (e) { }
+
   // Ruta por defecto si el usuario nunca ha configurado una
   const defaultDir = path.join(app.getPath('videos'), 'alabanzas');
-  
+
   // Nos aseguramos de que la carpeta exista para que no rompa las descargas ni lecturas
   if (!fs.existsSync(defaultDir)) {
     fs.mkdirSync(defaultDir, { recursive: true });
   }
-  
+
   return { videosDir: defaultDir };
 }
 
 function saveConfig(data) {
   try {
     fs.writeFileSync(getConfigPath(), JSON.stringify(data, null, 2), 'utf8');
-  } catch (e) {}
+  } catch (e) { }
 }
 
 /* ─── IPC ─── */
@@ -103,17 +103,25 @@ ipcMain.handle('get-local-media', async () => {
 
   try {
     if (fs.existsSync(videosDir) && fs.statSync(videosDir).isDirectory()) {
+      // En main.js, dentro del forEach de get-local-media
       fs.readdirSync(videosDir).forEach(file => {
         const filePath = path.join(videosDir, file);
-        if (fs.statSync(filePath).isFile()) {
+
+        try {
+          const stats = fs.statSync(filePath);
+          if (!stats.isFile()) return;
+
           const ext = path.extname(file).toLowerCase();
           if (['.mp4', '.mkv', '.avi', '.webm', '.mov'].includes(ext)) {
             result.videos.push({
-              name:   path.parse(file).name,
+              name: path.parse(file).name,
               author: 'Predicación',
-              url:    pathToFileURL(filePath).href
+              url: pathToFileURL(filePath).href,
+              addedAt: stats.mtime.toISOString()
             });
           }
+        } catch (statErr) {
+          console.warn('Archivo omitido:', file, statErr.message);
         }
       });
     }
