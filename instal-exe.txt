@@ -1,0 +1,10 @@
+Ve a tu carpeta dist/. Ahora verás un archivo comprimido llamado RemanenteMultimedia-1.0.0-win.zip.
+
+3. Cómo usarlo (Y cómo distribuirlo)
+Dale clic derecho al archivo .zip generado y selecciona Extraer todo.
+
+Entra a la carpeta extraída. Ahí verás el ejecutable portátil RemanenteMultimedia.exe.
+
+Crea la carpeta videos justo al lado de ese ejecutable y pon allí tus archivos .mp4.
+
+Dale doble clic al .exe. Al ejecutarse desde un entorno descomprimido de confianza local, Smart App Control no interceptará el hilo de ejecución y tu reproductor abrirá al instante cargando la lista de videos sin problemas.

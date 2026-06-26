@@ -1,83 +1,114 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+let mainWindow;
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    icon: path.join(__dirname, 'logo.png'),
     webPreferences: {
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      // Usamos un script de precarga para comunicar Node.js con el HTML de forma segura
-      preload: path.join(__dirname, 'preload.js') 
+      nodeIntegration: false
     }
   });
-
-  mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile('index.html');
 }
 
 app.whenReady().then(() => {
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
 
-// ─── CANALES DE COMUNICACIÓN (Node.js <-> HTML) ───
+/* ─── RUTA DE CONFIG ─── */
+function getConfigPath() {
+  return path.join(app.getPath('userData'), 'config.json');
+}
 
-// 1. Escanear automáticamente los archivos por defecto en carpetas físicas
+function loadConfig() {
+  try {
+    const p = getConfigPath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) {}
+  // Ruta por defecto si el usuario nunca ha configurado una
+  return { videosDir: path.join(app.getPath('videos'), 'alabanzas') };
+}
+
+function saveConfig(data) {
+  try {
+    fs.writeFileSync(getConfigPath(), JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {}
+}
+
+/* ─── IPC ─── */
+
+// 1. El usuario elige carpeta de videos
+ipcMain.handle('select-videos-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Selecciona la carpeta de videos',
+    properties: ['openDirectory']
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+
+  const folderPath = result.filePaths[0];
+  const config = loadConfig();
+  config.videosDir = folderPath;
+  saveConfig(config);
+  return folderPath;
+});
+
+// 2. Leer videos de la carpeta guardada
 ipcMain.handle('get-local-media', async () => {
-  // Ruta absoluta de tu carpeta de videos en el Escritorio
-  const videosDir = "C:\\Users\\jjdd1\\OneDrive\\Desktop\\Remanente-Desktop\\videos";
-  // Carpeta interna del proyecto para la música
-  const musicDir = path.join(__dirname, 'musica');
+  const config = loadConfig();
+  const videosDir = config.videosDir || null;
+  const result = { videos: [], currentFolder: videosDir };
 
-  // Asegurar que las carpetas existan de forma física
-  if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
-  if (!fs.existsSync(musicDir)) fs.mkdirSync(musicDir);
+  if (!videosDir) return result; // nunca se ha configurado
 
-  // Escaneo dinámico de Videos en tu Escritorio
-  const videos = fs.readdirSync(videosDir)
-    .filter(file => /\.(mp4|mkv|avi|webm)$/i.test(file))
-    .map(file => {
-      const fullPath = path.join(videosDir, file);
-      return {
-        name: file.replace(/\.[^.]+$/, ''), // Quita la extensión (.mp4) para mostrar un nombre limpio
-        author: 'Predicación',
-        // 'file://' le permite a la interfaz web de Electron reproducir rutas directas del disco duro
-        url: `file://${fullPath.replace(/\\/g, '/')}` 
-      };
-    });
-
-  // Escaneo dinámico de Música local en el proyecto
-  const music = fs.readdirSync(musicDir)
-    .filter(file => /\.(mp3|wav|ogg|aac)$/i.test(file))
-    .map(file => ({ 
-      name: file.replace(/\.[^.]+$/, ''), 
-      author: 'Adoración', 
-      url: `musica/${file}` 
-    }));
-
-  return { videos, music };
-});
-
-// 2. Guardar automáticamente la lista de "Guardados para momento" en un archivo de texto
-ipcMain.handle('save-playlist-txt', async (event, data) => {
-  const filePath = path.join(app.getPath('userData'), 'guardados_momento.txt');
-  fs.writeFileSync(filePath, data, 'utf-8');
-  return true;
-});
-
-// 3. Leer la lista guardada automáticamente al iniciar la app
-ipcMain.handle('load-playlist-txt', async () => {
-  const filePath = path.join(app.getPath('userData'), 'guardados_momento.txt');
-  if (fs.existsSync(filePath)) {
-    return fs.readFileSync(filePath, 'utf-8');
+  try {
+    if (fs.existsSync(videosDir) && fs.statSync(videosDir).isDirectory()) {
+      fs.readdirSync(videosDir).forEach(file => {
+        const filePath = path.join(videosDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          const ext = path.extname(file).toLowerCase();
+          if (['.mp4', '.mkv', '.avi', '.webm', '.mov'].includes(ext)) {
+            result.videos.push({
+              name:   path.parse(file).name,
+              author: 'Predicación',
+              url:    'file://' + filePath
+            });
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Error leyendo videos:', err);
   }
-  return null;
+
+  return result;
+});
+
+// 3. Guardar playlist
+ipcMain.handle('save-playlist-txt', async (event, content) => {
+  try {
+    fs.writeFileSync(path.join(app.getPath('userData'), 'playlist_saved.txt'), content, 'utf8');
+    return true;
+  } catch (err) { return false; }
+});
+
+// 4. Cargar playlist
+ipcMain.handle('load-playlist-txt', async () => {
+  try {
+    const p = path.join(app.getPath('userData'), 'playlist_saved.txt');
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
+    return '';
+  } catch (err) { return ''; }
 });

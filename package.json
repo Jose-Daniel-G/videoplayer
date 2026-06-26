@@ -17,8 +17,7 @@
     "win": {
       "target": [
         "nsis"
-      ],
-      "icon": "logo.ico"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -28,7 +27,15 @@
     },
     "files": [
       "**/*",
-      "!dist/*"
+      "!dist/*",
+      "!videos/*"
+    ],
+    "extraResources": [
+      {
+        "from": "videos",
+        "to": "../videos",
+        "filter": ["**/*"]
+      }
     ]
   }
 }

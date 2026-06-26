@@ -1,51 +1,74 @@
-
 let currentTab = 'video';
 let listScope = 'all'; 
 let searchQuery = '';
 
-// Almacenes dinámicos
+// Almacenes dinámicos (Exclusivos para Video)
 let masterPlaylist = [];
 let savedPlaylist = [];
 let localVideos = [];
-let localMusic = [];
 
 let currentIndex = -1;
 let isPlaying = false;
 let isShuffle = false;
 let isRepeat = false;
-let vizInterval = null;
 
 const videoPlayer = document.getElementById('video-player');
-const audioPlayer = document.getElementById('audio-player');
 
 // Al iniciar la aplicación de escritorio
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    // 1. Cargar archivos físicos reales leídos desde el proceso principal (main.js)
-    const media = await window.electronAPI.getLocalMedia();
-    localVideos = media.videos;
-    localMusic = media.music;
-    
-    // 2. Cargar automáticamente la lista persistente desde el archivo .txt
-    const txtContent = await window.electronAPI.loadPlaylistTxt();
-    if (txtContent && txtContent.startsWith("REMANENTE_PLAYLIST_EXPORT")) {
-      const jsonStr = txtContent.substring(txtContent.indexOf("\n") + 1);
-      savedPlaylist = JSON.parse(jsonStr);
+    // 1. Cargar videos desde la carpeta configurada por el usuario
+    if (window.electronAPI && typeof window.electronAPI.getLocalMedia === 'function') {
+      const media = await window.electronAPI.getLocalMedia();
+      localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
+
+      // Mostrar ruta activa bajo el botón Cargar
+      if (media && media.currentFolder) {
+        const folderLabel = document.getElementById('folder-label');
+        if (folderLabel) folderLabel.textContent = media.currentFolder;
+      }
     }
-    
+
+    // 2. Cargar playlist persistente
+    if (window.electronAPI && typeof window.electronAPI.loadPlaylistTxt === 'function') {
+      const txtContent = await window.electronAPI.loadPlaylistTxt();
+      if (txtContent && txtContent.startsWith("REMANENTE_PLAYLIST_EXPORT")) {
+        const jsonStr = txtContent.substring(txtContent.indexOf("\n") + 1);
+        savedPlaylist = JSON.parse(jsonStr);
+      }
+    }
+
     initDefaults();
     renderPlaylist();
   } catch (error) {
-    console.error("Error inicializando la app:", error);
+    console.error("Error inicializando la app desde renderer.js:", error);
+    initDefaults();
+    renderPlaylist();
   }
 });
 
+// Botón "Cargar" — el usuario elige la carpeta de videos
+async function loadFolder() {
+  if (!window.electronAPI || typeof window.electronAPI.selectVideosFolder !== 'function') return;
+  const folder = await window.electronAPI.selectVideosFolder();
+  if (!folder) return;
+
+  const media = await window.electronAPI.getLocalMedia();
+  localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
+
+  const folderLabel = document.getElementById('folder-label');
+  if (folderLabel) folderLabel.textContent = folder;
+
+  initDefaults();
+  renderPlaylist();
+}
+
 function initDefaults() {
-  masterPlaylist = currentTab === 'video' ? [...localVideos] : [...localMusic];
+  masterPlaylist = [...localVideos];
 }
 
 function getActivePlayer() {
-  return currentTab === 'video' ? videoPlayer : audioPlayer;
+  return videoPlayer;
 }
 
 function getActivePlaylist() {
@@ -56,50 +79,55 @@ function getActivePlaylist() {
   return baseList;
 }
 
-/* ─── Cambio de Pestaña Principal ─── */
+/* ─── Cambio de Pestaña Principal (Forzado a Video) ─── */
 function switchTab(tab) {
-  currentTab = tab;
+  currentTab = 'video'; // Forzar fijación en video
   currentIndex = -1;
   isPlaying = false;
   searchQuery = '';
-  document.getElementById('search-input').value = '';
+  
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.value = '';
   updatePlayPauseUI();
 
-  document.getElementById('tab-video').classList.toggle('active', tab === 'video');
-  document.getElementById('tab-music').classList.toggle('active', tab === 'music');
-  document.getElementById('screen-video').classList.toggle('hidden', tab !== 'video');
-  document.getElementById('screen-music').classList.toggle('hidden', tab !== 'music');
-  document.getElementById('playlist-label').textContent = tab === 'video' ? 'Lista de Videos' : 'Lista de Música';
+  const tabVideo = document.getElementById('tab-video');
+  const screenVideo = document.getElementById('screen-video');
+  const playlistLabel = document.getElementById('playlist-label');
+  
+  if (tabVideo) tabVideo.classList.add('active');
+  if (screenVideo) screenVideo.classList.remove('hidden');
+  if (playlistLabel) playlistLabel.textContent = 'Lista de Videos';
 
   const badge = document.getElementById('sermon-badge');
-  badge.innerHTML = tab === 'video'
-    ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> Predicación en Video'
-    : '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Alabanza y Música';
+  if (badge) {
+    badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> Predicación en Video';
+  }
 
-  videoPlayer.pause();
-  audioPlayer.pause();
-  stopVisualizer();
+  if (videoPlayer) videoPlayer.pause();
   
   initDefaults();
   renderPlaylist();
 
-  document.getElementById('track-title').textContent = 'Selecciona un archivo';
-  document.getElementById('track-author').textContent = '—';
-  document.getElementById('progress-fill').style.width = '0%';
-  document.getElementById('time-current').textContent = '0:00';
-  document.getElementById('time-total').textContent = '0:00';
+  const trackTitle = document.getElementById('track-title');
+  const trackAuthor = document.getElementById('track-author');
+  const progressFill = document.getElementById('progress-fill');
+  const timeCurrent = document.getElementById('time-current');
+  const timeTotal = document.getElementById('time-total');
 
-  if (tab === 'music') {
-    document.getElementById('music-title').textContent = 'Selecciona una canción';
-    document.getElementById('music-sub').textContent = '—';
-    document.getElementById('album-art').classList.remove('spinning');
-  }
+  if (trackTitle) trackTitle.textContent = 'Selecciona un archivo';
+  if (trackAuthor) trackAuthor.textContent = '—';
+  if (progressFill) progressFill.style.width = '0%';
+  if (timeCurrent) timeCurrent.textContent = '0:00';
+  if (timeTotal) timeTotal.textContent = '0:00';
 }
 
 function setListScope(scope) {
   listScope = scope;
-  document.getElementById('btn-filter-all').classList.toggle('active', scope === 'all');
-  document.getElementById('btn-filter-saved').classList.toggle('active', scope === 'saved');
+  const btnAll = document.getElementById('btn-filter-all');
+  const btnSaved = document.getElementById('btn-filter-saved');
+  
+  if (btnAll) btnAll.classList.toggle('active', scope === 'all');
+  if (btnSaved) btnSaved.classList.toggle('active', scope === 'saved');
   currentIndex = -1;
   renderPlaylist();
 }
@@ -109,11 +137,12 @@ function handleSearch(val) {
   renderPlaylist();
 }
 
-// Guarda la lista en el .txt de fondo automáticamente cada vez que cambia
 async function autoSaveSavedList() {
-  let content = "REMANENTE_PLAYLIST_EXPORT\n";
-  content += JSON.stringify(savedPlaylist, null, 2);
-  await window.electronAPI.savePlaylistTxt(content);
+  if (window.electronAPI && typeof window.electronAPI.savePlaylistTxt === 'function') {
+    let content = "REMANENTE_PLAYLIST_EXPORT\n";
+    content += JSON.stringify(savedPlaylist, null, 2);
+    await window.electronAPI.savePlaylistTxt(content);
+  }
 }
 
 async function clearSavedList() {
@@ -129,6 +158,8 @@ async function toggleSaveTrack(index, event) {
   let currentDisplayList = getActivePlaylist();
   let selectedTrack = currentDisplayList[index];
 
+  if (!selectedTrack) return;
+
   let existIndex = savedPlaylist.findIndex(item => item.name === selectedTrack.name);
   if (existIndex > -1) {
     savedPlaylist.splice(existIndex, 1);
@@ -136,7 +167,7 @@ async function toggleSaveTrack(index, event) {
     savedPlaylist.push(selectedTrack);
   }
   
-  await autoSaveSavedList(); // Guardado automático en .txt sin molestar al usuario
+  await autoSaveSavedList(); 
   renderPlaylist();
 }
 
@@ -144,14 +175,18 @@ async function toggleSaveTrack(index, event) {
 function renderPlaylist() {
   const list = document.getElementById('playlist-list');
   const count = document.getElementById('playlist-count');
+  if (!list) return;
+
   let currentDisplayList = getActivePlaylist();
   
-  count.textContent = currentDisplayList.length + (currentDisplayList.length === 1 ? ' elemento' : ' elementos');
+  if (count) {
+    count.textContent = currentDisplayList.length + (currentDisplayList.length === 1 ? ' video' : ' videos');
+  }
 
   if (currentDisplayList.length === 0) {
     list.innerHTML = `<div class="empty-state">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <p>No se encontraron elementos en este segmento.<br>Asegúrate de añadir archivos multimedia en las carpetas nativas de la aplicación.</p>
+      <p>No se encontraron videos disponibles.<br>Verifica la carpeta de origen configurada en el sistema principal.</p>
     </div>`;
     return;
   }
@@ -162,10 +197,7 @@ function renderPlaylist() {
     div.className = 'playlist-item' + (i === currentIndex ? ' active' : '');
     div.onclick = () => { loadTrack(i); };
 
-    const isVideo = currentTab === 'video';
-    const icon = isVideo
-      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.7)"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`
-      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(32,51,160,0.8)" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+    const icon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.7)"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> `;
 
     let isInSaved = savedPlaylist.some(s => s.name === item.name);
     let saveIconColor = isInSaved ? 'var(--gold)' : 'currentColor';
@@ -179,7 +211,7 @@ function renderPlaylist() {
       <div class="item-thumb">${icon}</div>
       <div class="item-info">
         <strong title="${item.name}">${item.name}</strong>
-        <span>${item.author}</span>
+        <span>${item.author || 'Predicación'}</span>
       </div>
       <span class="item-dur" style="margin-right: 0.5rem;">${dur}</span>
       <div class="action-icon" onclick="toggleSaveTrack(${i}, event)" title="Guardar/Remover de momentos">
@@ -190,7 +222,7 @@ function renderPlaylist() {
   });
 }
 
-/* ─── Carga de Pista Activa ─── */
+/* ─── Carga de Video Activo ─── */
 function loadTrack(index) {
   let currentDisplayList = getActivePlaylist();
   if (index < 0 || index >= currentDisplayList.length) return;
@@ -198,76 +230,97 @@ function loadTrack(index) {
   currentIndex = index;
   const item = currentDisplayList[index];
   const player = getActivePlayer();
+  if (!player) return;
 
-  videoPlayer.pause();
-  audioPlayer.pause();
-  stopVisualizer();
-
+  player.pause();
   player.src = item.url;
-  player.volume = parseFloat(document.getElementById('volume-slider').value);
-
-  document.getElementById('track-title').textContent = item.name;
-  document.getElementById('track-author').textContent = item.author;
-
-  if (currentTab === 'music') {
-    document.getElementById('music-title').textContent = item.name;
-    document.getElementById('music-sub').textContent = item.author;
+  
+  const volumeSlider = document.getElementById('volume-slider');
+  if (volumeSlider) {
+    player.volume = parseFloat(volumeSlider.value);
   }
 
+  const trackTitle = document.getElementById('track-title');
+  const trackAuthor = document.getElementById('track-author');
+  if (trackTitle) trackTitle.textContent = item.name;
+  if (trackAuthor) trackAuthor.textContent = item.author || 'Predicación';
+
   player.addEventListener('loadedmetadata', () => {
-    document.getElementById('time-total').textContent = formatTime(player.duration);
+    const timeTotal = document.getElementById('time-total');
+    if (timeTotal) timeTotal.textContent = formatTime(player.duration);
     item.duration = player.duration;
   }, { once: true });
 
   const listItems = document.querySelectorAll('.playlist-item');
   listItems.forEach((li, idx) => { li.classList.toggle('active', idx === currentIndex); });
 
-  setTimeout(() => player.play(), 150);
+  setTimeout(() => {
+    player.play().catch(err => console.log("Reproducción automática prevenida:", err));
+  }, 150);
 }
 
 function togglePlay() {
   const player = getActivePlayer();
-  if (!player.src) return;
+  if (!player || !player.src) return;
   if (isPlaying) player.pause();
-  else player.play();
+  else player.play().catch(() => {});
 }
 
 function forward10() {
   const player = getActivePlayer();
-  if (player.src && player.duration) player.currentTime = Math.min(player.duration, player.currentTime + 10);
+  if (player && player.src && player.duration) player.currentTime = Math.min(player.duration, player.currentTime + 10);
 }
 
 function rewind10() {
   const player = getActivePlayer();
-  if (player.src) player.currentTime = Math.max(0, player.currentTime - 10);
+  if (player && player.src) player.currentTime = Math.max(0, player.currentTime - 10);
 }
 
-videoPlayer.addEventListener('play', () => { isPlaying = true; updatePlayPauseUI(); document.getElementById('video-overlay').classList.add('playing'); });
-videoPlayer.addEventListener('pause', () => { isPlaying = false; updatePlayPauseUI(); document.getElementById('video-overlay').classList.remove('playing'); });
-audioPlayer.addEventListener('play', () => { isPlaying = true; updatePlayPauseUI(); startVisualizer(); document.getElementById('album-art').classList.add('spinning'); });
-audioPlayer.addEventListener('pause', () => { isPlaying = false; updatePlayPauseUI(); stopVisualizer(); document.getElementById('album-art').classList.remove('spinning'); });
+if (videoPlayer) {
+  videoPlayer.addEventListener('play', () => { 
+    isPlaying = true; 
+    updatePlayPauseUI(); 
+    const overlay = document.getElementById('video-overlay');
+    if (overlay) overlay.classList.add('playing'); 
+  });
+
+  videoPlayer.addEventListener('pause', () => { 
+    isPlaying = false; 
+    updatePlayPauseUI(); 
+    const overlay = document.getElementById('video-overlay');
+    if (overlay) overlay.classList.remove('playing'); 
+  });
+
+  videoPlayer.addEventListener('timeupdate', () => {
+    if (!videoPlayer.duration) return;
+    const pct = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+    const progressFill = document.getElementById('progress-fill');
+    const timeCurrent = document.getElementById('time-current');
+    
+    if (progressFill) progressFill.style.width = pct + '%';
+    if (timeCurrent) timeCurrent.textContent = formatTime(videoPlayer.currentTime);
+  });
+
+  videoPlayer.addEventListener('ended', () => {
+    if (isRepeat) { 
+      videoPlayer.currentTime = 0; 
+      videoPlayer.play().catch(() => {}); 
+    } else {
+      nextTrack();
+    }
+  });
+}
 
 function updatePlayPauseUI() {
-  document.getElementById('icon-play').classList.toggle('hidden', isPlaying);
-  document.getElementById('icon-pause').classList.toggle('hidden', !isPlaying);
+  const iconPlay = document.getElementById('icon-play');
+  const iconPause = document.getElementById('icon-pause');
+  if (iconPlay) iconPlay.classList.toggle('hidden', isPlaying);
+  if (iconPause) iconPause.classList.toggle('hidden', !isPlaying);
 }
-
-[videoPlayer, audioPlayer].forEach(p => {
-  p.addEventListener('timeupdate', () => {
-    if (!p.duration) return;
-    const pct = (p.currentTime / p.duration) * 100;
-    document.getElementById('progress-fill').style.width = pct + '%';
-    document.getElementById('time-current').textContent = formatTime(p.currentTime);
-  });
-  p.addEventListener('ended', () => {
-    if (isRepeat) { p.currentTime = 0; p.play(); }
-    else nextTrack();
-  });
-});
 
 function seekTo(e) {
   const player = getActivePlayer();
-  if (!player.duration) return;
+  if (!player || !player.duration) return;
   const rect = e.currentTarget.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
   player.currentTime = pct * player.duration;
@@ -292,20 +345,35 @@ function nextTrack() {
   loadTrack(newIdx);
 }
 
-function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('btn-shuffle').classList.toggle('active', isShuffle); }
-function toggleRepeat() { isRepeat = !isRepeat; document.getElementById('btn-repeat').classList.toggle('active', isRepeat); }
-function setVolume(val) { videoPlayer.volume = val; audioPlayer.volume = val; }
+function toggleShuffle() { 
+  isShuffle = !isShuffle; 
+  const btnShuffle = document.getElementById('btn-shuffle');
+  if (btnShuffle) btnShuffle.classList.toggle('active', isShuffle); 
+}
+
+function toggleRepeat() { 
+  isRepeat = !isRepeat; 
+  const btnRepeat = document.getElementById('btn-repeat');
+  if (btnRepeat) btnRepeat.classList.toggle('active', isRepeat); 
+}
+
+function setVolume(val) { 
+  if (videoPlayer) videoPlayer.volume = val; 
+}
 
 function toggleFullscreen() {
   const wrapper = document.getElementById('screen-video');
+  if (!wrapper) return;
   if (!document.fullscreenElement) wrapper.requestFullscreen().catch(() => {});
   else document.exitFullscreen();
 }
 
 document.addEventListener('fullscreenchange', () => {
   const inFs = !!document.fullscreenElement;
-  document.getElementById('icon-fs-expand').classList.toggle('hidden', inFs);
-  document.getElementById('icon-fs-shrink').classList.toggle('hidden', !inFs);
+  const expand = document.getElementById('icon-fs-expand');
+  const shrink = document.getElementById('icon-fs-shrink');
+  if (expand) expand.classList.toggle('hidden', inFs);
+  if (shrink) shrink.classList.toggle('hidden', !inFs);
 });
 
 function formatTime(s) {
@@ -313,25 +381,4 @@ function formatTime(s) {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   return m + ':' + (sec < 10 ? '0' : '') + sec;
-}
-
-let vizPhases = Array.from({length: 12}, () => Math.random() * Math.PI * 2);
-let vizSpeeds = Array.from({length: 12}, () => 0.05 + Math.random() * 0.08);
-function startVisualizer() {
-  if (vizInterval) return;
-  vizInterval = setInterval(() => {
-    for (let i = 1; i <= 12; i++) {
-      vizPhases[i-1] += vizSpeeds[i-1];
-      const h = 8 + Math.abs(Math.sin(vizPhases[i-1])) * 34;
-      const bar = document.getElementById('b' + i);
-      if (bar) bar.style.height = Math.round(h) + 'px';
-    }
-  }, 80);
-}
-function stopVisualizer() {
-  if (vizInterval) { clearInterval(vizInterval); vizInterval = null; }
-  for (let i = 1; i <= 12; i++) {
-    const bar = document.getElementById('b' + i);
-    if (bar) bar.style.height = '4px';
-  }
 }
