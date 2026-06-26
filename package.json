@@ -4,13 +4,31 @@
   "main": "main.js",
   "description": "Reproductor Multimedia Remanente",
   "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "start": "electron .",
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.0.0",
-    "@electron-forge/maker-squirrel": "^7.0.0",
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.remanente.player",
+    "productName": "RemanenteMultimedia",
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "logo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Remanente Multimedia"
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ]
   }
 }
