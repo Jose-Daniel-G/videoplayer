@@ -382,3 +382,60 @@ function formatTime(s) {
   const sec = Math.floor(s % 60);
   return m + ':' + (sec < 10 ? '0' : '') + sec;
 }
+
+// ─── FUNCIÓN PARA DESCARGAR DESDE YOUTUBE ───
+async function actionDownloadYoutube() {
+    const inputUrl = document.getElementById('youtube-url-input');
+    const statusDiv = document.getElementById('download-status');
+    const btnDownload = document.getElementById('btn-download-yt');
+    
+    const url = inputUrl.value.trim();
+    
+    if (!url) {
+        showDownloadStatus("Por favor, introduce un enlace de YouTube válido.", "error");
+        return;
+    }
+
+    // Cambiar estado de la interfaz a "Cargando"
+    btnDownload.disabled = true;
+    showDownloadStatus("Obteniendo video e integrando a la lista... Por favor espera.", "loading");
+
+    try {
+        // Enviar la URL al proceso Main de Electron para que maneje la descarga con yt-dlp
+        const result = await window.electronAPI.downloadYoutube(url);
+        
+        if (result.success) {
+            showDownloadStatus("¡Video descargado e indexado con éxito!", "success");
+            inputUrl.value = ""; // Limpiar input
+            
+            // Si tu renderer.js tiene un método para recargar la lista de videos guardados, 
+            // puedes llamarlo aquí, por ejemplo:
+            // if (typeof loadSavedTracks === 'function') loadSavedTracks();
+            
+        } else {
+            showDownloadStatus("Error al descargar: " + result.error, "error");
+        }
+    } catch (error) {
+        console.error("Error en el proceso de descarga:", error);
+        showDownloadStatus("Error de comunicación con el sistema.", "error");
+    } finally {
+        btnDownload.disabled = false;
+    }
+}
+
+// Función auxiliar para mostrar los mensajes de estado estéticos
+function showDownloadStatus(message, type) {
+    const statusDiv = document.getElementById('download-status');
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = message;
+    
+    // Limpiar clases anteriores
+    statusDiv.className = "download-status " + type;
+    
+    // Ocultar automáticamente si fue un éxito o error ordinario después de 5 segundos
+    if (type === 'success' || type === 'error') {
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+// Importamos el descargador profesional
+const ytDlp = require('youtube-dl-exec'); 
 
 let mainWindow;
 
@@ -39,8 +41,16 @@ function loadConfig() {
     const p = getConfigPath();
     if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
   } catch (e) {}
+  
   // Ruta por defecto si el usuario nunca ha configurado una
-  return { videosDir: path.join(app.getPath('videos'), 'alabanzas') };
+  const defaultDir = path.join(app.getPath('videos'), 'alabanzas');
+  
+  // Nos aseguramos de que la carpeta exista para que no rompa las descargas ni lecturas
+  if (!fs.existsSync(defaultDir)) {
+    fs.mkdirSync(defaultDir, { recursive: true });
+  }
+  
+  return { videosDir: defaultDir };
 }
 
 function saveConfig(data) {
@@ -52,18 +62,32 @@ function saveConfig(data) {
 /* ─── IPC ─── */
 
 // 1. El usuario elige carpeta de videos
-ipcMain.handle('select-videos-folder', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Selecciona la carpeta de videos',
-    properties: ['openDirectory']
-  });
-  if (result.canceled || !result.filePaths.length) return null;
-
-  const folderPath = result.filePaths[0];
+// Asegúrate de que se llame exactamente 'download-youtube'
+ipcMain.handle('download-youtube', async (event, youtubeUrl) => {
   const config = loadConfig();
-  config.videosDir = folderPath;
-  saveConfig(config);
-  return folderPath;
+  const targetFolder = config.videosDir;
+
+  if (!youtubeUrl) return { success: false, error: 'La URL está vacía' };
+  if (!targetFolder || !fs.existsSync(targetFolder)) {
+    return { success: false, error: 'La carpeta de destino no es válida o no existe.' };
+  }
+
+  try {
+    const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
+
+    await ytDlp(youtubeUrl, {
+      output: outputTemplate,
+      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error descargando de YouTube:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // 2. Leer videos de la carpeta guardada
@@ -72,7 +96,7 @@ ipcMain.handle('get-local-media', async () => {
   const videosDir = config.videosDir || null;
   const result = { videos: [], currentFolder: videosDir };
 
-  if (!videosDir) return result; // nunca se ha configurado
+  if (!videosDir) return result;
 
   try {
     if (fs.existsSync(videosDir) && fs.statSync(videosDir).isDirectory()) {
@@ -112,4 +136,34 @@ ipcMain.handle('load-playlist-txt', async () => {
     if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
     return '';
   } catch (err) { return ''; }
+});
+
+// 5. NUEVO: Descargar videos de YouTube a la carpeta activa
+ipcMain.handle('download-youtube-video', async (event, youtubeUrl) => {
+  const config = loadConfig();
+  const targetFolder = config.videosDir;
+
+  if (!youtubeUrl) return { success: false, error: 'La URL está vacía' };
+  if (!targetFolder || !fs.existsSync(targetFolder)) {
+    return { success: false, error: 'La carpeta de destino no es válida o no existe.' };
+  }
+
+  try {
+    // Configuración del formato de salida: Nombre del video de YT + extensión mp4
+    const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
+
+    // Ejecuta la descarga de forma asíncrona mediante yt-dlp
+    await ytDlp(youtubeUrl, {
+      output: outputTemplate,
+      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', // Prioriza mp4 nativo de buena calidad
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true
+    });
+
+    return { success: true, message: 'Video descargado con éxito en tu carpeta por defecto.' };
+  } catch (error) {
+    console.error('Error descargando de YouTube:', error);
+    return { success: false, error: error.message || 'Error interno durante el procesamiento del video.' };
+  }
 });

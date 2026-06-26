@@ -31,3 +31,7 @@ Remove-Item -Recurse -Force .git
 Ve a tu carpeta dist/. Ahora verás un archivo comprimido llamado RemanenteMultimedia-1.0.0-win.exe.
 
 Para que funcione desactiva Smart App Control.
+
+#### -----------------------------------------------
+
+npm install youtube-dl-exec

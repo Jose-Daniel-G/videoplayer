@@ -148,7 +148,7 @@
     50% { opacity: 0.5; transform: scale(0.7); }
   }
 
-  /* ─── Tab bar ─── */
+  /* ─── Tabs ─── */
   .tabs {
     display: flex;
     background: rgba(0,0,0,0.25);
@@ -418,7 +418,7 @@
     background: rgba(0,0,0,0.2);
     border: 1px solid var(--separator);
     border-radius: 8px;
-    padding: 0.45rem 0.7rem;
+    padding: 0.45rem 0.7·rem;
     transition: border-color var(--transition);
   }
 
@@ -431,6 +431,65 @@
   }
 
   .search-box input::placeholder { color: var(--pearl-muted); }
+
+  /* ─── NUEVOS ESTILOS INTERNOS PARA LA CAJA DE YOUTUBE ─── */
+  .download-box {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .download-control-group {
+    display: flex;
+    gap: 6px;
+  }
+  .download-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--separator);
+    color: var(--pearl);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    outline: none;
+    transition: border-color var(--transition);
+  }
+  .download-input:focus {
+    border-color: var(--gold-dim);
+  }
+  .btn-download {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: bold;
+    font-family: 'Lato', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background var(--transition);
+  }
+  .btn-download:hover {
+    background: var(--blue-light);
+  }
+  .btn-download:disabled {
+    background: var(--navy-light);
+    color: var(--pearl-muted);
+    cursor: not-allowed;
+  }
+  .download-status {
+    margin-top: 8px;
+    font-size: 0.68rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .download-status.loading { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
+  .download-status.success { color: #4ade80; background: rgba(74, 222, 128, 0.1); }
+  .download-status.error   { color: #f87171; background: rgba(248, 113, 113, 0.1); }
 
   /* Fila de acciones */
   .actions-row {
@@ -594,10 +653,9 @@
 <body>
 <div class="app">
 
-  <!-- Header -->
   <header>
     <div class="logo-wrap">
-      <img src="assets/logo.jpg " alt="Logo Remanente" onerror="this.style.display='none';this.parentElement.innerHTML='<svg width=\'44\' height=\'44\' viewBox=\'0 0 44 44\' fill=\'none\'><line x1=\'22\' y1=\'4\' x2=\'22\' y2=\'40\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/><line x1=\'11\' y1=\'16\' x2=\'33\' y2=\'16\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/></svg>'">
+      <img src="assets/imresizer-logo.jpg" alt="Logo Remanente" onerror="this.style.display='none';this.parentElement.innerHTML='<svg width=\'44\' height=\'44\' viewBox=\'0 0 44 44\' fill=\'none\'><line x1=\'22\' y1=\'4\' x2=\'22\' y2=\'40\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/><line x1=\'11\' y1=\'16\' x2=\'33\' y2=\'16\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/></svg>'">
     </div>
     <div class="header-text">
       <h1>Remanente del Dios Vivo y Eterno</h1>
@@ -612,30 +670,24 @@
 
   <div class="main-layout">
 
-    <!-- ══ Player card ══ -->
     <div class="player-card">
 
-      <!-- Pantalla de Video -->
       <div id="screen-video" class="video-wrapper">
         <video id="video-player" preload="metadata" onclick="togglePlay()"></video>
 
         <div class="video-overlay-controls" id="video-overlay-controls" style="opacity:1;">
 
-          <!-- Título de pista -->
           <div style="text-align:center; margin-bottom:2px;">
             <span id="track-title-vid" style="font-size:0.75rem; color:var(--pearl); font-family:'Cinzel',serif; letter-spacing:0.04em;"></span>
           </div>
 
-          <!-- Barra de progreso -->
           <div class="vid-progress" id="video-progress-bg" onclick="seekTo(event)">
             <div class="vid-progress-fill" id="video-progress-fill"></div>
           </div>
 
-          <!-- Fila: tiempo | controles centrales | volumen+fs -->
           <div class="vid-meta">
             <span id="video-time-current" style="font-size:0.68rem; color:rgba(255,255,255,0.6); min-width:60px;">0:00 / 0:00</span>
 
-            <!-- Controles centrales -->
             <div style="display:flex; gap:2px; align-items:center;">
               <button id="btn-shuffle" class="vid-ctrl-btn" onclick="toggleShuffle()" title="Aleatorio">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
@@ -661,7 +713,6 @@
               </button>
             </div>
 
-            <!-- Volumen + pantalla completa -->
             <div style="display:flex; gap:4px; align-items:center; min-width:60px; justify-content:flex-end;">
               <button id="mute-btn" class="vid-ctrl-btn" onclick="toggleMute()" title="Silenciar">
                 <svg id="icon-volume" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
@@ -677,10 +728,9 @@
         </div>
       </div>
 
-      <!-- Pantalla de Música -->
       <div id="screen-music" class="music-screen hidden">
         <div class="album-art" id="album-art">
-          <img class="logo-inner" src="assets/logo.jpg" alt="Logo" onerror="this.style.display='none'">
+          <img class="logo-inner" src="assets/imresizer-logo.jpg" alt="Logo" onerror="this.style.display='none'">
         </div>
         <div>
           <div class="now-playing-title" id="music-title">Selecciona una canción</div>
@@ -698,7 +748,6 @@
 
       <audio id="audio-player" preload="metadata"></audio>
 
-      <!-- IDs requeridos por JS -->
       <span id="sermon-badge" style="display:none"></span>
       <span id="track-title" style="display:none"></span>
       <span id="track-author" style="display:none"></span>
@@ -714,13 +763,28 @@
       <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.85" style="display:none" oninput="setVolume(this.value)">
     </div>
 
-    <!-- ══ Playlist card ══ -->
     <div class="playlist-card">
       <div class="playlist-header">
         <h2 id="playlist-label">Lista de Videos</h2>
         <span class="playlist-count" id="playlist-count">0 elementos</span>
       </div>
 
+      <div class="playlist-controls" style="border-bottom: none; padding-bottom: 0;">
+        <div class="download-box">
+          <div class="download-control-group">
+            <input 
+              type="text" 
+              id="youtube-url-input" 
+              placeholder="Pegar enlace de YouTube aquí... (https://...)" 
+              class="download-input"
+            />
+            <button id="btn-download-yt" class="btn-download" onclick="actionDownloadYoutube()">
+              <span class="icon">📥</span> Descargar
+            </button>
+          </div>
+          <div id="download-status" class="download-status" style="display: none;"></div>
+        </div>
+      </div>
       <div class="playlist-controls">
         <div class="list-filters">
           <button class="filter-btn active" id="btn-filter-all" onclick="setListScope('all')">Todos</button>
