@@ -34,7 +34,8 @@
     "files": [
       "**/*",
       "!dist/*",
-      "!videos/*"
+      "!videos/*",
+      "!node_modules/youtube-dl-exec/bin/*"
     ],
     "extraResources": [
       {
@@ -43,6 +44,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "bin/ffmpeg.exe",
+        "to": "bin/ffmpeg.exe"
+      },
+      {
+        "from": "bin/yt-dlp.exe",
+        "to": "bin/yt-dlp.exe"
       }
     ]
   },

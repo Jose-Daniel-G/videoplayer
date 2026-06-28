@@ -5,58 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Remanente del Dios Vivo y Eterno — Multimedia</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/previsualizacion_lista.css">
 <link rel="stylesheet" href="css/style.css">
-<style>
-  /* Estilos rápidos para las nuevas secciones de previsualización y lista */
-  .yt-preview-box {
-    margin-bottom: 15px;
-    text-align: center;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 12px;
-    padding: 10px;
-    border: 1px dashed var(--glass-border-strong, #C9A84C);
-    display: none; /* Se muestra dinámicamente con JS */
-  }
-  .yt-preview-box img {
-    width: 100%;
-    max-width: 240px;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    margin-bottom: 8px;
-  }
-  .yt-preview-box p {
-    font-size: 0.75rem;
-    color: #E8C96A;
-    font-weight: bold;
-  }
-  .local-downloads-container {
-    margin-top: 15px;
-    text-align: left;
-    width: 100%;
-  }
-  .local-downloads-title {
-    font-family: 'Cinzel', serif;
-    font-size: 0.72rem;
-    color: #C9A84C;
-    letter-spacing: 0.1em;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-    padding-bottom: 4px;
-  }
-  .local-download-item {
-    font-size: 0.72rem;
-    padding: 6px 8px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 4px;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: #B8AF98;
-    border-left: 2px solid #2033A0;
-  }
-</style>
 </head>
 <body>
 <div class="app">
@@ -90,7 +40,7 @@
   <div class="main-layout">
 
     <div class="player-card">
-
+<!-- Video Section -->
       <div id="screen-video" class="video-wrapper">
         <video id="video-player" preload="metadata" onclick="togglePlay()"></video>
 
@@ -145,7 +95,7 @@
           </div>
         </div>
       </div>
-
+<!-- Download Section -->
       <div id="screen-download" class="music-screen hidden" style="justify-content: flex-start; padding-top: 1.5rem; overflow-y: auto;">
         
         <div id="yt-preview-container" class="yt-preview-box">

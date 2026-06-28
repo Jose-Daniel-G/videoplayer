@@ -2,10 +2,53 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-// Importamos el descargador profesional
-const ytDlp = require('youtube-dl-exec');
+const { create: createYtDlp } = require('youtube-dl-exec');
 
 let mainWindow;
+
+/* ─── RUTAS DE BINARIOS ───
+ *
+ * En producción (app.isPackaged = true):
+ *   Los binarios van en extraResources → resources/bin/
+ *   __dirname apunta dentro del ASAR (inútil para ejecutables)
+ *   → Usar SIEMPRE process.resourcesPath/bin/
+ *
+ * En desarrollo (npm start):
+ *   → Buscar en node_modules/youtube-dl-exec/bin/ (lo puso npm install)
+ *     o en la carpeta local bin/ si existe
+ */
+function getBinPath(filename) {
+  // process.resourcesPath es provisto por Electron en TODOS los entornos:
+  // - Producción: C:\...\RemanenteMultimedia\resources
+  // - Desarrollo:  C:\...\node_modules\electron\dist\resources
+  //
+  // En producción, extraResources pone los binarios en resources/bin/
+  // En desarrollo, los binarios están en bin/ del proyecto (__dirname)
+
+  // Si hay un bin/ accesible junto a resources/ (producción), usarlo
+  const prodPath = path.join(process.resourcesPath, 'bin', filename);
+  if (fs.existsSync(prodPath)) {
+    return prodPath;
+  }
+
+  // Desarrollo: node_modules/youtube-dl-exec/bin/ (npm install lo descargó aquí)
+  const fromNodeModules = path.join(__dirname, 'node_modules', 'youtube-dl-exec', 'bin', filename);
+  if (fs.existsSync(fromNodeModules)) return fromNodeModules;
+
+  // Fallback: bin/ local
+  return path.join(__dirname, 'bin', filename);
+}
+
+function getYtDlpPath() { return getBinPath('yt-dlp.exe'); }
+function getFfmpegPath() { return getBinPath('ffmpeg.exe'); }
+
+function getYtDlp() {
+  const ytDlpPath = getYtDlpPath();
+  const exists = fs.existsSync(ytDlpPath);
+  console.log('[yt-dlp] resourcesPath:', process.resourcesPath);
+  console.log('[yt-dlp] binario:', ytDlpPath, '| existe:', exists);
+  return createYtDlp(ytDlpPath);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -76,6 +119,7 @@ ipcMain.handle('download-youtube', async (event, youtubeUrl) => {
   try {
     const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
 
+    const ytDlp = getYtDlp();
     await ytDlp(youtubeUrl, {
       output: outputTemplate,
       format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
@@ -83,13 +127,17 @@ ipcMain.handle('download-youtube', async (event, youtubeUrl) => {
       noWarnings: true,
       preferFreeFormats: true,
       mergeOutputFormat: 'mp4',
-      ffmpegLocation: path.join(__dirname, 'bin', 'ffmpeg.exe')
+      ffmpegLocation: getFfmpegPath()
     });
 
     return { success: true };
   } catch (error) {
-    console.error('Error descargando de YouTube:', error);
-    return { success: false, error: error.message };
+    const ytPath = getYtDlpPath();
+    const ffPath = getFfmpegPath();
+    const diag = 'yt-dlp [' + (require("fs").existsSync(ytPath) ? 'OK' : 'NO ENCONTRADO') + ']: ' + ytPath + ' | ffmpeg [' + (require("fs").existsSync(ffPath) ? 'OK' : 'NO ENCONTRADO') + ']: ' + ffPath;
+    console.error('Error descargando de YouTube:', error.message);
+    console.error('Diagnostico:', diag);
+    return { success: false, error: error.message + '\n\n' + diag };
   }
 });
 
@@ -164,6 +212,7 @@ ipcMain.handle('download-youtube-video', async (event, youtubeUrl) => {
     const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
 
     // Ejecuta la descarga de forma asíncrona mediante yt-dlp
+    const ytDlp = getYtDlp();
     await ytDlp(youtubeUrl, {
       output: outputTemplate,
       format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', // Prioriza mp4 nativo de buena calidad
@@ -171,7 +220,7 @@ ipcMain.handle('download-youtube-video', async (event, youtubeUrl) => {
       noWarnings: true,
       preferFreeFormats: true,
       mergeOutputFormat: 'mp4',
-      ffmpegLocation: path.join(__dirname, 'bin', 'ffmpeg.exe')
+      ffmpegLocation: getFfmpegPath()
     });
 
     return { success: true, message: 'Video descargado con éxito en tu carpeta por defecto.' };

@@ -324,61 +324,44 @@ function seekTo(e) {
   const rect = e.currentTarget.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
   player.currentTime = pct * player.duration;
+}
 
-  // ─── CONTROL DE ARRASTRE DE LA BARRA DE PROGRESO ───
-
-  const videoPlayer = document.getElementById('video-player');
+// ─── CONTROL DE ARRASTRE DE LA BARRA DE PROGRESO ───
+// IMPORTANTE: estos listeners se registran UNA SOLA VEZ al cargar la página,
+// NO dentro de seekTo() para evitar acumulación infinita de handlers.
+(function initProgressDrag() {
   const progressBg = document.getElementById('video-progress-bg');
   const progressFill = document.getElementById('video-progress-fill');
-
   let isDraggingProgress = false;
 
-  // 1. Función base para calcular la posición y aplicar el tiempo al video
   function setProgressPosition(event) {
     if (!videoPlayer || !progressBg || videoPlayer.duration === 0) return;
-
-    // Obtener las dimensiones y posición de la barra de fondo
     const rect = progressBg.getBoundingClientRect();
-
-    // Calcular la posición X del mouse relativa a la barra
     let x = event.clientX - rect.left;
-
-    // Limitar que el valor no se salga de los bordes (0% a 100%)
     if (x < 0) x = 0;
     if (x > rect.width) x = rect.width;
-
-    // Calcular el porcentaje e inyectarlo al reproductor
     const percentage = x / rect.width;
     videoPlayer.currentTime = percentage * videoPlayer.duration;
-
-    // Actualizar visualmente el relleno de la barra de forma inmediata
     if (progressFill) {
       progressFill.style.width = (percentage * 100) + '%';
     }
   }
 
-  // 2. Evento al hacer CLIC directo o iniciar el arrastre (MouseDown)
   if (progressBg) {
     progressBg.addEventListener('mousedown', (e) => {
       isDraggingProgress = true;
-      setProgressPosition(e); // Actualiza la posición al hacer clic inicial
+      setProgressPosition(e);
     });
   }
 
-  // 3. Evento mientras se ARRASTRA el mouse por la pantalla (MouseMove)
   window.addEventListener('mousemove', (e) => {
-    if (isDraggingProgress) {
-      setProgressPosition(e);
-    }
+    if (isDraggingProgress) setProgressPosition(e);
   });
 
-  // 4. Evento al SOLTAR el botón del mouse (MouseUp)
   window.addEventListener('mouseup', () => {
-    if (isDraggingProgress) {
-      isDraggingProgress = false;
-    }
+    isDraggingProgress = false;
   });
-}
+})();
 
 function prevTrack() {
   let currentDisplayList = getActivePlaylist();
@@ -647,16 +630,4 @@ async function updateDownloadedLocalList() {
   }
 }
 
-// Función auxiliar estética de alertas de estado
-function showDownloadStatus(message, type) {
-  const statusDiv = document.getElementById('download-status');
-  statusDiv.style.display = 'block';
-  statusDiv.textContent = message;
-  statusDiv.className = "download-status " + type;
-
-  if (type === 'success' || type === 'error') {
-    setTimeout(() => {
-      statusDiv.style.display = 'none';
-    }, 6000);
-  }
-}
+// showDownloadStatus ya está definida arriba (línea ~485) — no duplicar aquí
