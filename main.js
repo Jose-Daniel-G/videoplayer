@@ -1,231 +1,402 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path = require('path');
-const fs = require('fs');
-const { pathToFileURL } = require('url');
-const { create: createYtDlp } = require('youtube-dl-exec');
+const { app, BrowserWindow, ipcMain } = require("electron");
+const path    = require("path");
+const fs      = require("fs");
+const { execFile } = require("child_process");
+const { pathToFileURL } = require("url");
 
-let mainWindow;
+/* ═══════════════════════════════════════════
+   JSONBIN
+   ═══════════════════════════════════════════ */
+const JSONBIN_API_KEY = "$2a$10$FC02j5gbHIHKA.wnoYQNqegrrC4EBf/gCyx1lR/oBRGi99Bj7aemC";
+const BIN_VIDEOS   = "6a4171f1da38895dfe0cb6b8";
+const BIN_PLAYLIST = "6a41792df5f4af5e293e5e04";
+const BIN_PENDING  = "6a4585f0f5f4af5e2950260e";
 
-/* ─── RUTAS DE BINARIOS ───
- *
- * En producción (app.isPackaged = true):
- *   Los binarios van en extraResources → resources/bin/
- *   __dirname apunta dentro del ASAR (inútil para ejecutables)
- *   → Usar SIEMPRE process.resourcesPath/bin/
- *
- * En desarrollo (npm start):
- *   → Buscar en node_modules/youtube-dl-exec/bin/ (lo puso npm install)
- *     o en la carpeta local bin/ si existe
- */
+async function jsonbinGet(binId) {
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+    headers: { "X-Master-Key": JSONBIN_API_KEY },
+  });
+  if (!res.ok) throw new Error(`JSONBin GET ${binId}: HTTP ${res.status}`);
+  const data = await res.json();
+  return data.record;
+}
+
+async function jsonbinPut(binId, body) {
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`JSONBin PUT ${binId}: HTTP ${res.status}`);
+  return res.json();
+}
+
+/* ═══════════════════════════════════════════
+   RUTAS DE BINARIOS
+   ═══════════════════════════════════════════ */
 function getBinPath(filename) {
-  // process.resourcesPath es provisto por Electron en TODOS los entornos:
-  // - Producción: C:\...\RemanenteMultimedia\resources
-  // - Desarrollo:  C:\...\node_modules\electron\dist\resources
-  //
-  // En producción, extraResources pone los binarios en resources/bin/
-  // En desarrollo, los binarios están en bin/ del proyecto (__dirname)
-
-  // Si hay un bin/ accesible junto a resources/ (producción), usarlo
-  const prodPath = path.join(process.resourcesPath, 'bin', filename);
-  if (fs.existsSync(prodPath)) {
-    return prodPath;
-  }
-
-  // Desarrollo: node_modules/youtube-dl-exec/bin/ (npm install lo descargó aquí)
-  const fromNodeModules = path.join(__dirname, 'node_modules', 'youtube-dl-exec', 'bin', filename);
-  if (fs.existsSync(fromNodeModules)) return fromNodeModules;
-
-  // Fallback: bin/ local
-  return path.join(__dirname, 'bin', filename);
+  const prodPath = path.join(process.resourcesPath, "bin", filename);
+  if (fs.existsSync(prodPath)) return prodPath;
+  const devPath = path.join(app.getAppPath(), "bin", filename);
+  if (fs.existsSync(devPath)) return devPath;
+  const nmPath = path.join(app.getAppPath(), "node_modules", "youtube-dl-exec", "bin", filename);
+  if (fs.existsSync(nmPath)) return nmPath;
+  return prodPath;
 }
+const getYtDlpPath  = () => getBinPath("yt-dlp.exe");
+const getFfmpegPath = () => getBinPath("ffmpeg.exe");
 
-function getYtDlpPath() { return getBinPath('yt-dlp.exe'); }
-function getFfmpegPath() { return getBinPath('ffmpeg.exe'); }
-
-function getYtDlp() {
-  const ytDlpPath = getYtDlpPath();
-  const exists = fs.existsSync(ytDlpPath);
-  console.log('[yt-dlp] resourcesPath:', process.resourcesPath);
-  console.log('[yt-dlp] binario:', ytDlpPath, '| existe:', exists);
-  return createYtDlp(ytDlpPath);
-}
+/* ═══════════════════════════════════════════
+   VENTANA
+   ═══════════════════════════════════════════ */
+let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: path.join(__dirname, 'assets', 'imresizer-logo.ico'),
+    icon: path.join(__dirname, "assets", "imresizer-logo.ico"),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
-      nodeIntegration: false
-    }
+      nodeIntegration: false,
+    },
   });
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile("index.html");
+
+  // Cuando la UI termina de cargar, disparar las pendientes directamente
+  mainWindow.webContents.on("did-finish-load", () => {
+    setTimeout(() => {
+      console.log("[Auto-Start] Buscando descargas pendientes en la nube...");
+      enqueuePendingDownloads();
+    }, 2000);
+  });
 }
 
 app.whenReady().then(() => {
   createWindow();
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
 });
 
-/* ─── RUTA DE CONFIG ─── */
+/* ═══════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════ */
 function getConfigPath() {
-  return path.join(app.getPath('userData'), 'config.json');
+  return path.join(app.getPath("userData"), "config.json");
 }
-
 function loadConfig() {
   try {
     const p = getConfigPath();
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch (e) { }
-
-  // Ruta por defecto si el usuario nunca ha configurado una
-  const defaultDir = path.join(app.getPath('videos'), 'alabanzas');
-
-  // Nos aseguramos de que la carpeta exista para que no rompa las descargas ni lecturas
-  if (!fs.existsSync(defaultDir)) {
-    fs.mkdirSync(defaultDir, { recursive: true });
-  }
-
-  return { videosDir: defaultDir };
-}
-
-function saveConfig(data) {
+    if (fs.existsSync(p)) {
+      const saved = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (saved.videosDir && fs.existsSync(saved.videosDir)) return saved;
+    }
+  } catch (e) {}
+  const defaultDir =
+    process.platform === "win32"
+      ? "C:\\Users\\" + require("os").userInfo().username + "\\Videos\\alabanzas"
+      : path.join(app.getPath("videos"), "alabanzas");
   try {
-    fs.writeFileSync(getConfigPath(), JSON.stringify(data, null, 2), 'utf8');
-  } catch (e) { }
+    if (!fs.existsSync(defaultDir)) fs.mkdirSync(defaultDir, { recursive: true });
+  } catch (e) {}
+  return { videosDir: defaultDir, volume: 0.85, lastVideo: null, lastPosition: 0 };
+}
+function saveConfig(data) {
+  try { fs.writeFileSync(getConfigPath(), JSON.stringify(data, null, 2), "utf8"); } catch (e) {}
 }
 
-/* ─── IPC ─── */
+/* ═══════════════════════════════════════════
+   THUMBNAILS
+   ═══════════════════════════════════════════ */
+function getThumbsDir() {
+  const dir = path.join(app.getPath("userData"), "thumbs");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+function extractThumbnail(videoPath) {
+  return new Promise((resolve) => {
+    const name     = path.parse(videoPath).name;
+    const thumbOut = path.join(getThumbsDir(), name + ".jpg");
+    if (fs.existsSync(thumbOut)) return resolve(thumbOut);
+    const ffmpeg = getFfmpegPath();
+    if (!fs.existsSync(ffmpeg)) return resolve(null);
+    execFile(ffmpeg, ["-ss","3","-i",videoPath,"-frames:v","1","-q:v","5","-vf","scale=160:-1",thumbOut,"-y"],
+      { timeout: 15000 }, (err) => resolve(err ? null : thumbOut));
+  });
+}
 
-// 1. El usuario elige carpeta de videos
-// Asegúrate de que se llame exactamente 'download-youtube'
-ipcMain.handle('download-youtube', async (event, youtubeUrl) => {
-  const config = loadConfig();
+/* ═══════════════════════════════════════════
+   COLA DE DESCARGAS — CORREGIDA
+   ═══════════════════════════════════════════ */
+const downloadQueue = [];
+let isDownloading = false;
+
+async function processQueue() {
+  // Guardia: si ya hay una descarga activa o la cola está vacía, salir
+  if (isDownloading || downloadQueue.length === 0) return;
+  isDownloading = true;
+
+  const { url, jobId, isPending } = downloadQueue.shift();
+  const config       = loadConfig();
   const targetFolder = config.videosDir;
 
-  if (!youtubeUrl) return { success: false, error: 'La URL está vacía' };
-  if (!targetFolder || !fs.existsSync(targetFolder)) {
-    return { success: false, error: 'La carpeta de destino no es válida o no existe.' };
+  function send(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("download-progress", { jobId, isPending, url, ...payload });
+    }
   }
 
+  // ── FIX: todo dentro de un único try/finally para garantizar el reset ──
   try {
-    const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
+    if (!targetFolder || !fs.existsSync(targetFolder)) {
+      send({ status: "error", error: "La carpeta de destino no existe." });
+      return; // el finally se encarga del reset
+    }
 
-    const ytDlp = getYtDlp();
-    await ytDlp(youtubeUrl, {
-      output: outputTemplate,
-      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      noCheckCertificates: true,
-      noWarnings: true,
-      preferFreeFormats: true,
-      mergeOutputFormat: 'mp4',
-      ffmpegLocation: getFfmpegPath()
+    send({ status: "starting", queue: downloadQueue.length });
+
+    const outputTemplate = path.join(targetFolder, "%(title)s.%(ext)s");
+    const ytDlpPath      = getYtDlpPath();
+    let   lastFile       = null;
+
+    await new Promise((resolve, reject) => {
+      const proc = execFile(ytDlpPath, [
+        url,
+        "--output", outputTemplate,
+        "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "--no-check-certificates",
+        "--no-warnings",
+        "--no-playlist",
+        "--merge-output-format", "mp4",
+        "--ffmpeg-location", getFfmpegPath(),
+        "--newline",
+        "--progress",
+      ], { timeout: 0 });
+
+      proc.stdout.on("data", (chunk) => {
+        for (const line of chunk.toString().split("\n")) {
+          const destMatch = line.match(/\[download\] Destination:\s*(.+)/);
+          if (destMatch) lastFile = destMatch[1].trim();
+
+          const pctMatch = line.match(/\[download\]\s+([\d.]+)%\s+of\s+([\d.~]+\w+)\s+at\s+([\d.~]+\w+\/s)\s+ETA\s+(\S+)/);
+          if (pctMatch) send({ status:"progress", percent:parseFloat(pctMatch[1]), size:pctMatch[2], speed:pctMatch[3], eta:pctMatch[4] });
+
+          if (line.includes("[Merger]") || line.includes("Merging formats")) {
+            send({ status:"progress", percent:99, speed:"—", eta:"—", size:"—" });
+          }
+        }
+      });
+      proc.stderr.on("data", (chunk) => console.error("[yt-dlp stderr]", chunk.toString()));
+      proc.on("close", (code) => code === 0 ? resolve(lastFile) : reject(new Error(`yt-dlp salió con código ${code}`)));
+      proc.on("error", reject);
     });
 
-    return { success: true };
+    // Descarga OK — thumbnail
+    let thumbUrl = null;
+    if (lastFile && fs.existsSync(lastFile)) {
+      const thumbPath = await extractThumbnail(lastFile).catch(() => null);
+      if (thumbPath) thumbUrl = pathToFileURL(thumbPath).href;
+    }
+    send({ status: "done", thumbUrl });
+
+    // Si era pendiente, borrarlo del Bin y notificar al renderer
+    if (isPending) {
+      await removePendingFromCloud(url).catch(e =>
+        console.warn("[pending] No se pudo actualizar BIN_PENDING:", e.message)
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("pending-download-done", { url, jobId });
+      }
+    }
+
   } catch (error) {
-    const ytPath = getYtDlpPath();
-    const ffPath = getFfmpegPath();
-    const diag = 'yt-dlp [' + (require("fs").existsSync(ytPath) ? 'OK' : 'NO ENCONTRADO') + ']: ' + ytPath + ' | ffmpeg [' + (require("fs").existsSync(ffPath) ? 'OK' : 'NO ENCONTRADO') + ']: ' + ffPath;
-    console.error('Error descargando de YouTube:', error.message);
-    console.error('Diagnostico:', diag);
-    return { success: false, error: error.message + '\n\n' + diag };
+    console.error("[processQueue] Error:", error.message);
+    send({ status: "error", error: error.message });
+  } finally {
+    // ── FIX CLAVE: el reset SIEMPRE ocurre, pase lo que pase ──
+    isDownloading = false;
+    // Llamar al siguiente en la cola (en el próximo tick para evitar stack overflow)
+    setImmediate(processQueue);
+  }
+}
+
+/* ─── Eliminar URL del Bin de pendientes ─── */
+async function removePendingFromCloud(url) {
+  const record  = await jsonbinGet(BIN_PENDING);
+  const pending = Array.isArray(record?.pending) ? record.pending : [];
+  const updated = pending.filter(item => (typeof item === "string" ? item : item.url) !== url);
+  await jsonbinPut(BIN_PENDING, { pending: updated, updatedAt: new Date().toISOString() });
+  console.log("[pending] Eliminado del Bin:", url);
+}
+
+/* ─── Leer pendientes de la nube y encolarlos (llamado directo, no via IPC) ─── */
+async function enqueuePendingDownloads() {
+  try {
+    const record  = await jsonbinGet(BIN_PENDING);
+    const pending = Array.isArray(record?.pending) ? record.pending : [];
+
+    if (pending.length === 0) {
+      console.log("[pending] No hay descargas pendientes.");
+      return;
+    }
+    console.log(`[pending] ${pending.length} pendiente(s). Encolando...`);
+
+    let enqueued = 0;
+    for (const item of pending) {
+      const url = typeof item === "string" ? item : item.url;
+      if (!url) continue;
+      // No duplicar si ya está en la cola
+      if (downloadQueue.some(q => q.url === url)) continue;
+      const jobId = "pending_" + Date.now() + "_" + Math.random().toString(36).slice(2,6);
+      downloadQueue.push({ url, jobId, isPending: true });
+      enqueued++;
+    }
+
+    if (enqueued > 0) {
+      // Notificar al renderer cuántas se encolaron
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("download-progress", {
+          jobId: "init", isPending: true, url: "",
+          status: "pending-init", count: enqueued
+        });
+      }
+      processQueue(); // Arrancar la cola
+    }
+  } catch (e) {
+    console.warn("[enqueuePendingDownloads] error:", e.message);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   IPC HANDLERS
+   ═══════════════════════════════════════════ */
+
+// Encolar descarga manual desde la UI
+ipcMain.handle("download-youtube", async (event, url) => {
+  if (!url) return { success: false, error: "URL vacía" };
+  const jobId = Date.now().toString();
+  downloadQueue.push({ url, jobId, isPending: false });
+  processQueue();
+  return { success: true, jobId, queuePosition: downloadQueue.length };
+});
+
+// Llamado desde renderer al arrancar (como fallback además del did-finish-load)
+ipcMain.handle("process-pending-downloads", async () => {
+  await enqueuePendingDownloads();
+  return { success: true };
+});
+
+// Leer playlist del domingo
+ipcMain.handle("fetch-cloud-playlist", async () => {
+  try {
+    const record   = await jsonbinGet(BIN_PLAYLIST);
+    const playlist = Array.isArray(record?.playlist) ? record.playlist : [];
+    return { success: true, playlist };
+  } catch (error) {
+    return { success: false, playlist: [], error: error.message };
   }
 });
 
-// 2. Leer videos de la carpeta guardada
-ipcMain.handle('get-local-media', async () => {
-  const config = loadConfig();
-  const videosDir = config.videosDir || null;
-  const result = { videos: [], currentFolder: videosDir };
-
-  if (!videosDir) return result;
-
+// Subir lista de videos a la nube
+ipcMain.handle("upload-to-cloud", async (event, jsonData) => {
   try {
-    if (fs.existsSync(videosDir) && fs.statSync(videosDir).isDirectory()) {
-      // En main.js, dentro del forEach de get-local-media
-      fs.readdirSync(videosDir).forEach(file => {
-        const filePath = path.join(videosDir, file);
-
-        try {
-          const stats = fs.statSync(filePath);
-          if (!stats.isFile()) return;
-
-          const ext = path.extname(file).toLowerCase();
-          if (['.mp4', '.mkv', '.avi', '.webm', '.mov'].includes(ext)) {
-            result.videos.push({
-              name: path.parse(file).name,
-              author: 'Predicación',
-              url: pathToFileURL(filePath).href,
-              addedAt: stats.mtime.toISOString()
-            });
-          }
-        } catch (statErr) {
-          console.warn('Archivo omitido:', file, statErr.message);
-        }
-      });
-    }
-  } catch (err) {
-    console.error('Error leyendo videos:', err);
+    await jsonbinPut(BIN_VIDEOS, { updatedAt: new Date().toISOString(), videos: jsonData });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
+});
 
+// Leer videos locales
+ipcMain.handle("get-local-media", async () => {
+  const config    = loadConfig();
+  const videosDir = config.videosDir || null;
+  const result    = { videos: [], currentFolder: videosDir };
+  if (!videosDir || !fs.existsSync(videosDir)) return result;
+  const thumbsDir = getThumbsDir();
+  fs.readdirSync(videosDir).forEach(file => {
+    const filePath = path.join(videosDir, file);
+    try {
+      const stats = fs.statSync(filePath);
+      if (!stats.isFile()) return;
+      const ext = path.extname(file).toLowerCase();
+      if (![".mp4",".mkv",".avi",".webm",".mov"].includes(ext)) return;
+      const name      = path.parse(file).name;
+      const thumbFile = path.join(thumbsDir, name + ".jpg");
+      result.videos.push({
+        name, author: "Predicación",
+        url: pathToFileURL(filePath).href,
+        addedAt: stats.mtime.toISOString(),
+        thumbUrl: fs.existsSync(thumbFile) ? pathToFileURL(thumbFile).href : null,
+      });
+    } catch (e) { console.warn("Archivo omitido:", file, e.message); }
+  });
   return result;
 });
 
-// 3. Guardar playlist
-ipcMain.handle('save-playlist-txt', async (event, content) => {
+// Extraer thumbnail
+ipcMain.handle("extract-thumb", async (event, fileUrl) => {
   try {
-    fs.writeFileSync(path.join(app.getPath('userData'), 'playlist_saved.txt'), content, 'utf8');
-    return true;
-  } catch (err) { return false; }
+    const filePath  = new URL(fileUrl).pathname.replace(/^\/([A-Z]:)/, "$1");
+    const thumbPath = await extractThumbnail(filePath);
+    return thumbPath ? pathToFileURL(thumbPath).href : null;
+  } catch (e) { return null; }
 });
 
-// 4. Cargar playlist
-ipcMain.handle('load-playlist-txt', async () => {
+// Renombrar video
+ipcMain.handle("rename-video", async (event, { oldUrl, newName }) => {
   try {
-    const p = path.join(app.getPath('userData'), 'playlist_saved.txt');
-    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
-    return '';
-  } catch (err) { return ''; }
+    const safeName = newName.replace(/[\\/:*?"<>|]/g, "_").trim();
+    if (!safeName) return { success: false, error: "Nombre inválido" };
+    const oldPath = new URL(oldUrl).pathname.replace(/^\/([A-Z]:)/, "$1");
+    const ext     = path.extname(oldPath);
+    const newPath = path.join(path.dirname(oldPath), safeName + ext);
+    if (fs.existsSync(newPath)) return { success: false, error: "Ya existe un archivo con ese nombre" };
+    fs.renameSync(oldPath, newPath);
+    const oldThumb = path.join(getThumbsDir(), path.parse(oldPath).name + ".jpg");
+    const newThumb = path.join(getThumbsDir(), safeName + ".jpg");
+    if (fs.existsSync(oldThumb)) fs.renameSync(oldThumb, newThumb);
+    return { success: true, newUrl: pathToFileURL(newPath).href };
+  } catch (e) { return { success: false, error: e.message }; }
 });
 
-// 5. NUEVO: Descargar videos de YouTube a la carpeta activa
-ipcMain.handle('download-youtube-video', async (event, youtubeUrl) => {
-  const config = loadConfig();
-  const targetFolder = config.videosDir;
-
-  if (!youtubeUrl) return { success: false, error: 'La URL está vacía' };
-  if (!targetFolder || !fs.existsSync(targetFolder)) {
-    return { success: false, error: 'La carpeta de destino no es válida o no existe.' };
-  }
-
+// Playlist local (txt)
+ipcMain.handle("save-playlist-txt", async (event, content) => {
+  try { fs.writeFileSync(path.join(app.getPath("userData"), "playlist_saved.txt"), content, "utf8"); return true; }
+  catch { return false; }
+});
+ipcMain.handle("load-playlist-txt", async () => {
   try {
-    // Configuración del formato de salida: Nombre del video de YT + extensión mp4
-    const outputTemplate = path.join(targetFolder, '%(title)s.%(ext)s');
+    const p = path.join(app.getPath("userData"), "playlist_saved.txt");
+    return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+  } catch { return ""; }
+});
 
-    // Ejecuta la descarga de forma asíncrona mediante yt-dlp
-    const ytDlp = getYtDlp();
-    await ytDlp(youtubeUrl, {
-      output: outputTemplate,
-      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', // Prioriza mp4 nativo de buena calidad
-      noCheckCertificates: true,
-      noWarnings: true,
-      preferFreeFormats: true,
-      mergeOutputFormat: 'mp4',
-      ffmpegLocation: getFfmpegPath()
+// Estado del reproductor
+ipcMain.handle("save-player-state", async (event, state) => {
+  saveConfig({ ...loadConfig(), ...state }); return true;
+});
+ipcMain.handle("load-player-state", async () => {
+  const { volume = 0.85, lastVideo = null, lastPosition = 0 } = loadConfig();
+  return { volume, lastVideo, lastPosition };
+});
+
+// Carpeta → JSON
+ipcMain.handle("get-folder-json", async (event, folderPath) => {
+  try {
+    if (!fs.existsSync(folderPath)) return { success: false, error: "La ruta no existe." };
+    const filesData = fs.readdirSync(folderPath).map(file => {
+      const fp    = path.join(folderPath, file);
+      const stats = fs.statSync(fp);
+      return { name: path.parse(file).name, filename: file, extension: path.extname(file),
+               size: stats.size, isFolder: stats.isDirectory(),
+               createdAt: stats.birthtime.toISOString(), updatedAt: stats.mtime.toISOString() };
     });
-
-    return { success: true, message: 'Video descargado con éxito en tu carpeta por defecto.' };
-  } catch (error) {
-    console.error('Error descargando de YouTube:', error);
-    return { success: false, error: error.message || 'Error interno durante el procesamiento del video.' };
-  }
+    return { success: true, data: filesData };
+  } catch (error) { return { success: false, error: error.message }; }
 });

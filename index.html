@@ -1,177 +1,246 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Remanente del Dios Vivo y Eterno — Multimedia</title>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/previsualizacion_lista.css">
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remanente del Dios Vivo y Eterno — Multimedia</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/previsualizacion_lista.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
-<div class="app">
+  <div class="app">
 
-  <header>
-    <div class="logo-wrap">
-      <img src="assets/imresizer-logo.jpg" alt="Logo Remanente" onerror="this.style.display='none';this.parentElement.innerHTML='<svg width=\'44\' height=\'44\' viewBox=\'0 0 44 44\' fill=\'none\'><line x1=\'22\' y1=\'4\' x2=\'22\' y2=\'40\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/><line x1=\'11\' y1=\'16\' x2=\'33\' y2=\'16\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/></svg>'">
+    <header>
+      <div class="logo-wrap">
+        <img src="assets/imresizer-logo.jpg" alt="Logo Remanente"
+          onerror="this.style.display='none';this.parentElement.innerHTML='<svg width=\'44\' height=\'44\' viewBox=\'0 0 44 44\' fill=\'none\'><line x1=\'22\' y1=\'4\' x2=\'22\' y2=\'40\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/><line x1=\'11\' y1=\'16\' x2=\'33\' y2=\'16\' stroke=\'#3A4DC4\' stroke-width=\'2.5\' stroke-linecap=\'round\'/></svg>'">
+      </div>
+      <div class="header-text">
+        <h1>Remanente del Dios Vivo y Eterno</h1>
+        <p>Ministerio Multimedia · Alabanza · Predicación</p>
+        <div class="gold-rule"></div>
+      </div>
+      <div class="now-badge" id="header-badge">
+        <span class="dot"></span>
+        <span id="header-badge-text">En espera</span>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchMainTab('video')" id="tab-video">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="23 7 16 12 23 17 23 7" />
+          <rect x="1" y="5" width="15" height="14" rx="2" />
+        </svg>
+        Videos
+      </button>
+      <button class="tab-btn" onclick="switchMainTab('download')" id="tab-download">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+        Descargar
+      </button>
     </div>
-    <div class="header-text">
-      <h1>Remanente del Dios Vivo y Eterno</h1>
-      <p>Ministerio Multimedia · Alabanza · Predicación</p>
-      <div class="gold-rule"></div>
-    </div>
-    <div class="now-badge" id="header-badge">
-      <span class="dot"></span>
-      <span id="header-badge-text">En espera</span>
-    </div>
-  </header>
 
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchMainTab('video')" id="tab-video">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-      Videos
-    </button>
-    <button class="tab-btn" onclick="switchMainTab('download')" id="tab-download">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      Descargar
-    </button>
-  </div>
-  
-  <div class="main-layout">
+    <div class="main-layout">
 
-    <div class="player-card">
-<!-- Video Section -->
-      <div id="screen-video" class="video-wrapper">
-        <video id="video-player" preload="metadata" onclick="togglePlay()"></video>
+      <div class="player-card">
+        <!-- Video Section -->
+        <div id="screen-video" class="video-wrapper">
+          <video id="video-player" preload="metadata" onclick="togglePlay()"></video>
 
-        <div class="video-overlay-controls" id="video-overlay-controls" style="opacity:1;">
-          <div style="text-align:center; margin-bottom:2px;">
-            <span id="track-title-vid" style="font-size:0.75rem; color:var(--pearl); font-family:'Cinzel',serif; letter-spacing:0.04em;"></span>
-          </div>
-
-          <div class="vid-progress" id="video-progress-bg" onclick="seekTo(event)">
-            <div class="vid-progress-fill" id="video-progress-fill"></div>
-          </div>
-
-          <div class="vid-meta">
-            <span id="video-time-current" style="font-size:0.68rem; color:rgba(255,255,255,0.6); min-width:60px;">0:00 / 0:00</span>
-
-            <div style="display:flex; gap:2px; align-items:center;">
-              <button id="btn-shuffle" class="vid-ctrl-btn" onclick="toggleShuffle()" title="Aleatorio">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
-              </button>
-              <button class="vid-ctrl-btn" onclick="prevTrack()" title="Anterior">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
-              </button>
-              <button class="vid-ctrl-btn" onclick="rewind10()" title="Retroceder 10s">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-              </button>
-              <button class="vid-ctrl-btn vid-play-btn" onclick="togglePlay()" title="Reproducir/Pausar">
-                <svg id="vid-icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <svg id="vid-icon-pause" class="hidden" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-              </button>
-              <button class="vid-ctrl-btn" onclick="forward10()" title="Avanzar 10s">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-              </button>
-              <button class="vid-ctrl-btn" onclick="nextTrack()" title="Siguiente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
-              </button>
-              <button id="btn-repeat" class="vid-ctrl-btn" onclick="toggleRepeat()" title="Repetir">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-              </button>
+          <div class="video-overlay-controls" id="video-overlay-controls" style="opacity:1;">
+            <div style="text-align:center; margin-bottom:2px;">
+              <span id="track-title-vid"
+                style="font-size:0.75rem; color:var(--pearl); font-family:'Cinzel',serif; letter-spacing:0.04em;"></span>
             </div>
 
-            <div style="display:flex; gap:4px; align-items:center; min-width:60px; justify-content:flex-end;">
-              <button id="mute-btn" class="vid-ctrl-btn" onclick="toggleMute()" title="Silenciar">
-                <svg id="icon-volume" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                <svg id="icon-mute" class="hidden" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-              </button>
-              <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.85" class="vid-volume-slider" oninput="setVolume(this.value)">
-              <button class="vid-ctrl-btn" onclick="toggleFullscreen()" title="Pantalla completa">
-                <svg id="icon-fs-expand" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                <svg id="icon-fs-shrink" class="hidden" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
-              </button>
+            <div class="vid-progress" id="video-progress-bg" onclick="seekTo(event)">
+              <div class="vid-progress-fill" id="video-progress-fill"></div>
+            </div>
+
+            <div class="vid-meta">
+              <span id="video-time-current" style="font-size:0.68rem; color:rgba(255,255,255,0.6); min-width:60px;">0:00
+                / 0:00</span>
+
+              <div style="display:flex; gap:2px; align-items:center;">
+                <button id="btn-shuffle" class="vid-ctrl-btn" onclick="toggleShuffle()" title="Aleatorio">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 3 21 3 21 8" />
+                    <line x1="4" y1="20" x2="21" y2="3" />
+                    <polyline points="21 16 21 21 16 21" />
+                    <line x1="15" y1="15" x2="21" y2="21" />
+                  </svg>
+                </button>
+                <button class="vid-ctrl-btn" onclick="prevTrack()" title="Anterior">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="19 20 9 12 19 4 19 20" />
+                    <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </button>
+                <button class="vid-ctrl-btn" onclick="rewind10()" title="Retroceder 10s">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <polyline points="3 3 3 8 8 8" />
+                  </svg>
+                </button>
+                <button class="vid-ctrl-btn vid-play-btn" onclick="togglePlay()" title="Reproducir/Pausar">
+                  <svg id="vid-icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  <svg id="vid-icon-pause" class="hidden" width="20" height="20" viewBox="0 0 24 24"
+                    fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" />
+                    <rect x="14" y="4" width="4" height="16" />
+                  </svg>
+                </button>
+                <button class="vid-ctrl-btn" onclick="forward10()" title="Avanzar 10s">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                    <polyline points="21 3 21 8 16 8" />
+                  </svg>
+                </button>
+                <button class="vid-ctrl-btn" onclick="nextTrack()" title="Siguiente">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 4 15 12 5 20 5 4" />
+                    <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </button>
+                <button id="btn-repeat" class="vid-ctrl-btn" onclick="toggleRepeat()" title="Repetir">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="17 1 21 5 17 9" />
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                    <polyline points="7 23 3 19 7 15" />
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                  </svg>
+                </button>
+              </div>
+
+              <div style="display:flex; gap:4px; align-items:center; min-width:60px; justify-content:flex-end;">
+                <button id="mute-btn" class="vid-ctrl-btn" onclick="toggleMute()" title="Silenciar">
+                  <svg id="icon-volume" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  </svg>
+                  <svg id="icon-mute" class="hidden" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <line x1="23" y1="9" x2="17" y2="15" />
+                    <line x1="17" y1="9" x2="23" y2="15" />
+                  </svg>
+                </button>
+                <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.85"
+                  class="vid-volume-slider" oninput="setVolume(this.value)">
+                <button class="vid-ctrl-btn" onclick="toggleFullscreen()" title="Pantalla completa">
+                  <svg id="icon-fs-expand" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <path
+                      d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                  </svg>
+                  <svg id="icon-fs-shrink" class="hidden" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <path
+                      d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-<!-- Download Section -->
-      <div id="screen-download" class="music-screen hidden" style="justify-content: flex-start; padding-top: 1.5rem; overflow-y: auto;">
-        
-        <div id="yt-preview-container" class="yt-preview-box">
-          <img id="yt-preview-img" src="" alt="Miniatura de YouTube">
-          <p id="yt-preview-title">Detectando video...</p>
-        </div>
+        <!-- Download Section -->
+        <div id="screen-download" class="music-screen hidden"
+          style="justify-content: flex-start; padding-top: 1.5rem; overflow-y: auto;">
 
-        <div class="download-box" style="width: 100%; max-width: 500px;">
-          <div class="download-control-group">
-            <input 
-              type="text" 
-              id="youtube-url-input" 
-              placeholder="Pegar enlace de YouTube aquí..." 
-              class="download-input"
-              oninput="handleYoutubeUrlInput(this.value)"
-            />
-            <button id="btn-download-yt" class="btn-download" onclick="actionDownloadYoutube()">
-              <span class="icon">📥</span> Descargar
-            </button>
+          <div id="yt-preview-container" class="yt-preview-box">
+            <img id="yt-preview-img" src="" alt="Miniatura de YouTube">
+            <p id="yt-preview-title">Detectando video...</p>
           </div>
-          <div id="download-status" class="download-status" style="display: none;"></div>
-        </div>
 
-        <div class="local-downloads-container">
-          <div class="local-downloads-title">Videos en Carpeta de Alabanzas</div>
-          <div id="downloaded-local-list">
-            <p style="font-size:0.68rem; color:var(--pearl-muted);">Cargando archivos locales...</p>
+          <div class="download-box" style="width: 100%; max-width: 500px;">
+            <div class="download-control-group">
+              <input type="text" id="youtube-url-input" placeholder="Pegar enlace de YouTube aquí..."
+                class="download-input" oninput="handleYoutubeUrlInput(this.value)" />
+              <button id="btn-download-yt" class="btn-download" onclick="actionDownloadYoutube()">
+                <span class="icon">📥</span> Descargar
+              </button>
+            </div>
+            <div id="download-status" class="download-status" style="display: none;"></div>
+            <div id="download-queue-container"></div>
+          </div>
+
+          <div class="local-downloads-container">
+            <div class="local-downloads-title">Videos en Carpeta de Alabanzas</div>
+            <div id="downloaded-local-list">
+              <p style="font-size:0.68rem; color:var(--pearl-muted);">Cargando archivos locales...</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <audio id="audio-player" preload="metadata"></audio>
-      <span id="sermon-badge" style="display:none"></span>
-      <span id="track-title" style="display:none"></span>
-      <span id="track-author" style="display:none"></span>
-      <div id="progress-bg" style="display:none"><div id="progress-fill"></div></div>
-      <span id="time-current" style="display:none"></span>
-      <span id="time-total" style="display:none"></span>
-      <button id="play-pause-btn" style="display:none" onclick="togglePlay()"></button>
-    </div>
-
-    <div class="playlist-card">
-      <div class="playlist-header">
-        <h2 id="playlist-label">Lista de Videos</h2>
-        <span class="playlist-count" id="playlist-count">0 elementos</span>
-      </div>
-
-      <div class="playlist-controls">
-        <div class="list-filters">
-          <button class="filter-btn active" id="btn-filter-all" onclick="setListScope('all')">Todos</button>
-          <button class="filter-btn" id="btn-filter-saved" onclick="setListScope('saved')">Guardados</button>
+        <audio id="audio-player" preload="metadata"></audio>
+        <span id="sermon-badge" style="display:none"></span>
+        <span id="track-title" style="display:none"></span>
+        <span id="track-author" style="display:none"></span>
+        <div id="progress-bg" style="display:none">
+          <div id="progress-fill"></div>
         </div>
-        <div class="search-box">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="search-input" placeholder="Buscar por nombre..." oninput="handleSearch(this.value)">
+        <span id="time-current" style="display:none"></span>
+        <span id="time-total" style="display:none"></span>
+        <button id="play-pause-btn" style="display:none" onclick="togglePlay()"></button>
+      </div>
+
+      <div class="playlist-card">
+        <div class="playlist-header">
+          <h2 id="playlist-label">Lista de Videos</h2>
+          <span class="playlist-count" id="playlist-count">0 elementos</span>
         </div>
+
+        <div class="playlist-controls">
+          <div class="list-filters">
+            <button class="filter-btn active" id="btn-filter-all" onclick="setListScope('all')">Todos</button>
+            <button class="filter-btn" id="btn-filter-saved" onclick="setListScope('saved')">Guardados</button>
+          </div>
+          <div class="search-box">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input type="text" id="search-input" placeholder="Buscar por nombre..." oninput="handleSearch(this.value)">
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <label class="action-btn" for="file-input" title="Cargar archivos multimedia">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            Cargar
+          </label>
+          <button class="action-btn danger" onclick="clearSavedList()" title="Borrar lista guardada">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+            Borrar
+          </button>
+          <input type="file" id="file-input" multiple accept="video/*" style="display:none">
+        </div>
+
+        <div class="playlist-list" id="playlist-list"></div>
       </div>
 
-      <div class="actions-row">
-        <label class="action-btn" for="file-input" title="Cargar archivos multimedia">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          Cargar
-        </label>
-        <button class="action-btn danger" onclick="clearSavedList()" title="Borrar lista guardada">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          Borrar
-        </button>
-        <input type="file" id="file-input" multiple accept="video/*" style="display:none">
-      </div>
-
-      <div class="playlist-list" id="playlist-list"></div>
     </div>
-
   </div>
-</div>
 
-<script src="renderer.js"></script>
+  <script src="renderer.js"></script>
 </body>
+
 </html>

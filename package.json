@@ -33,9 +33,10 @@
     },
     "files": [
       "**/*",
-      "!dist/*",
-      "!videos/*",
-      "!node_modules/youtube-dl-exec/bin/*"
+      "!dist/**",
+      "!videos/**",
+      "!bin/**",
+      "!node_modules/youtube-dl-exec/bin/**"
     ],
     "extraResources": [
       {
@@ -52,6 +53,10 @@
       {
         "from": "bin/yt-dlp.exe",
         "to": "bin/yt-dlp.exe"
+      },
+      {
+        "from": "bin/ffprobe.exe",
+        "to": "bin/ffprobe.exe"
       }
     ]
   },

@@ -1,133 +1,252 @@
-let currentTab = 'video';
+/* ═══════════════════════════════════════════════════════════════
+   renderer.js — Remanente Desktop
+   Mejoras: progreso real · cola · thumbnails · renombrar ·
+            badge "Reproduciendo" · atajos · persistir estado ·
+            sincronización playlist domingo → Guardados ·
+            descargas pendientes desde la nube
+   ═══════════════════════════════════════════════════════════════ */
+
+// ─── Estado global ───
 let listScope = 'all';
 let searchQuery = '';
-
-// Almacenes dinámicos (Exclusivos para Video)
 let masterPlaylist = [];
 let savedPlaylist = [];
 let localVideos = [];
-
 let currentIndex = -1;
 let isPlaying = false;
 let isShuffle = false;
 let isRepeat = false;
 
+// Cola visual de descargas: Map<jobId, { status, percent, ... }>
+const downloadJobs = new Map();
+
 const videoPlayer = document.getElementById('video-player');
 
-// Al iniciar la aplicación de escritorio
+/* ═══════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    // 1. Cargar videos desde la carpeta configurada por el usuario
-    if (window.electronAPI && typeof window.electronAPI.getLocalMedia === 'function') {
-      const media = await window.electronAPI.getLocalMedia();
-      localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
+    // ── 1. Cargar videos de la carpeta local ──────────────────────────
+    await reloadLocalVideos();
+    masterPlaylist = [...localVideos];
 
-      // Mostrar ruta activa bajo el botón Cargar
-      if (media && media.currentFolder) {
-        const folderLabel = document.getElementById('folder-label');
-        if (folderLabel) folderLabel.textContent = media.currentFolder;
+    // ── 2. Cargar lista guardada (marcadores ★) del archivo local ─────
+    if (window.electronAPI?.loadPlaylistTxt) {
+      const txt = await window.electronAPI.loadPlaylistTxt();
+      if (txt?.startsWith('REMANENTE_PLAYLIST_EXPORT')) {
+        try {
+          savedPlaylist = JSON.parse(txt.substring(txt.indexOf('\n') + 1));
+        } catch (parseErr) {
+          console.warn('No se pudo parsear la lista guardada:', parseErr);
+          savedPlaylist = [];
+        }
       }
     }
 
-    // 2. Cargar playlist persistente
-    if (window.electronAPI && typeof window.electronAPI.loadPlaylistTxt === 'function') {
-      const txtContent = await window.electronAPI.loadPlaylistTxt();
-      if (txtContent && txtContent.startsWith("REMANENTE_PLAYLIST_EXPORT")) {
-        const jsonStr = txtContent.substring(txtContent.indexOf("\n") + 1);
-        savedPlaylist = JSON.parse(jsonStr);
+    // ── 3. Sincronizar playlist del domingo desde la nube → Guardados ─
+    await syncCloudPlaylistToSaved();
+
+    // ── 4. Restaurar volumen + último video + posición ─────────────────
+    if (window.electronAPI?.loadPlayerState) {
+      const state = await window.electronAPI.loadPlayerState();
+
+      if (state.volume !== undefined) {
+        videoPlayer.volume = state.volume;
+        const slider = document.getElementById('volume-slider');
+        if (slider) slider.value = state.volume;
+      }
+
+      if (state.lastVideo) {
+        let idx = masterPlaylist.findIndex(v => v.url === state.lastVideo);
+        if (idx === -1) {
+          const lastName = state.lastVideo.split(/[/\\]/).pop();
+          idx = masterPlaylist.findIndex(v => v.url.split(/[/\\]/).pop() === lastName);
+        }
+
+        if (idx > -1) {
+          loadTrack(idx, false);
+          const posToRestore = state.lastPosition > 2 ? state.lastPosition : 0;
+          if (posToRestore > 0) {
+            videoPlayer.addEventListener('loadedmetadata', () => {
+              videoPlayer.currentTime = posToRestore;
+            }, { once: true });
+          }
+        }
       }
     }
 
-    initDefaults();
-    renderPlaylist();
-  } catch (error) {
-    console.error("Error inicializando la app desde renderer.js:", error);
-    initDefaults();
-    renderPlaylist();
+    // ── 5. Escuchar progreso de descargas desde main ───────────────────
+    window.electronAPI?.onDownloadProgress(handleDownloadProgress);
+
+    // ── 6. Escuchar cuando una descarga pendiente termina ─────────────
+    window.electronAPI?.onPendingDownloadDone(async () => {
+      await reloadLocalVideos();
+      masterPlaylist = [...localVideos];
+      await syncCloudPlaylistToSaved();
+      renderPlaylist();
+    });
+
+    // ── 7. Procesar descargas pendientes desde la nube ─────────────────
+    (async () => {
+      try {
+        const result = await window.electronAPI.processPendingDownloads();
+        if (result?.enqueued > 0) {
+          showToast(`⬇️ ${result.enqueued} descarga(s) pendiente(s) iniciada(s) automáticamente`, 'info');
+        }
+      } catch (e) {
+        console.warn('No se pudieron procesar descargas pendientes:', e.message);
+      }
+    })();
+
+    // ── 8. Sincronizar carpeta con la nube (sin bloquear la UI) ────────
+    (async () => {
+      try {
+        const media = await window.electronAPI.getLocalMedia();
+        const rutaActual = media?.currentFolder ?? null;
+        if (!rutaActual) return;
+
+        const response = await window.electronAPI.getFolderJson(rutaActual);
+        if (!response.success) { console.warn('getFolderJson falló:', response.error); return; }
+
+        const cloudResponse = await window.electronAPI.uploadToCloud(response.data);
+        if (cloudResponse.success) {
+          console.log('%c Lista sincronizada en la nube ✓', 'color:#00ff00;font-weight:bold');
+        } else {
+          console.warn('Error al subir a la nube:', cloudResponse.error);
+        }
+      } catch (cloudErr) {
+        console.warn('Sincronización con la nube falló (modo offline?):', cloudErr.message);
+      }
+    })();
+
+  } catch (e) {
+    console.error('Error al inicializar:', e);
   }
+
+  renderPlaylist();
+  initKeyboardShortcuts();
 });
 
-// Botón "Cargar" — el usuario elige la carpeta de videos
-async function loadFolder() {
-  if (!window.electronAPI || typeof window.electronAPI.selectVideosFolder !== 'function') return;
-  const folder = await window.electronAPI.selectVideosFolder();
-  if (!folder) return;
+/* ═══════════════════════════════════════════
+   SINCRONIZACIÓN PLAYLIST DOMINGO → GUARDADOS
+   ═══════════════════════════════════════════ */
+/**
+ * Descarga la playlist del domingo desde la nube y añade a savedPlaylist
+ * aquellos videos que ya existen en la carpeta local.
+ * Videos que no existen todavía (pendientes de descargar) se ignoran aquí
+ * porque se añadirán solos cuando la descarga termine.
+ */
+async function syncCloudPlaylistToSaved() {
+  if (!window.electronAPI?.fetchCloudPlaylist) return;
 
+  try {
+    const result = await window.electronAPI.fetchCloudPlaylist();
+    if (!result.success || !result.playlist.length) return;
+
+    const cloudFilenames = result.playlist; // array de filenames, ej: ["cancion.mp4", ...]
+    let changed = false;
+
+    for (const filename of cloudFilenames) {
+      // Buscar en los videos locales el que coincida con este filename
+      const localVideo = localVideos.find(v => {
+        // El filename en la nube incluye extensión; el name del video local NO incluye extensión
+        const nameWithExt = v.name + getExtension(v.url);
+        return nameWithExt === filename || v.name === filename || filename.startsWith(v.name);
+      });
+
+      if (!localVideo) continue; // aún no descargado, saltar
+
+      // Solo agregar si no está ya en savedPlaylist
+      const yaGuardado = savedPlaylist.some(s => s.name === localVideo.name);
+      if (!yaGuardado) {
+        savedPlaylist.push(localVideo);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await persistSavedList();
+      console.log('[sync] Playlist del domingo sincronizada en Guardados ✓');
+    }
+  } catch (e) {
+    console.warn('[syncCloudPlaylistToSaved] error:', e.message);
+  }
+}
+
+function getExtension(url) {
+  try { return '.' + url.split('.').pop().split('?')[0]; } catch { return ''; }
+}
+
+/* ═══════════════════════════════════════════
+   HELPERS DE DATOS
+   ═══════════════════════════════════════════ */
+async function reloadLocalVideos() {
+  if (!window.electronAPI?.getLocalMedia) return;
   const media = await window.electronAPI.getLocalMedia();
-  localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
+  localVideos = media?.videos ?? [];
 
   const folderLabel = document.getElementById('folder-label');
-  if (folderLabel) folderLabel.textContent = folder;
-
-  initDefaults();
-  renderPlaylist();
-}
-
-function initDefaults() {
-  masterPlaylist = [...localVideos];
-}
-
-function getActivePlayer() {
-  return videoPlayer;
+  if (folderLabel && media?.currentFolder) folderLabel.textContent = media.currentFolder;
 }
 
 function getActivePlaylist() {
-  let baseList = (listScope === 'all') ? masterPlaylist : savedPlaylist;
-  if (searchQuery.trim() !== '') {
-    return baseList.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }
-  return baseList;
+  const base = listScope === 'all' ? masterPlaylist : savedPlaylist;
+  const q = searchQuery.trim().toLowerCase();
+  return q ? base.filter(v => v.name.toLowerCase().includes(q)) : base;
 }
 
-/* ─── Cambio de Pestaña Principal (Forzado a Video) ─── */
-function switchTab(tab) {
-  currentTab = 'video'; // Forzar fijación en video
-  currentIndex = -1;
-  isPlaying = false;
-  searchQuery = '';
-
-  const searchInput = document.getElementById('search-input');
-  if (searchInput) searchInput.value = '';
-  updatePlayPauseUI();
-
-  const tabVideo = document.getElementById('tab-video');
-  const screenVideo = document.getElementById('screen-video');
-  const playlistLabel = document.getElementById('playlist-label');
-
-  if (tabVideo) tabVideo.classList.add('active');
-  if (screenVideo) screenVideo.classList.remove('hidden');
-  if (playlistLabel) playlistLabel.textContent = 'Lista de Videos';
-
-  const badge = document.getElementById('sermon-badge');
-  if (badge) {
-    badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> Predicación en Video';
-  }
-
-  if (videoPlayer) videoPlayer.pause();
-
-  initDefaults();
-  renderPlaylist();
-
-  const trackTitle = document.getElementById('track-title');
-  const trackAuthor = document.getElementById('track-author');
-  const progressFill = document.getElementById('progress-fill');
-  const timeCurrent = document.getElementById('time-current');
-  const timeTotal = document.getElementById('time-total');
-
-  if (trackTitle) trackTitle.textContent = 'Selecciona un archivo';
-  if (trackAuthor) trackAuthor.textContent = '—';
-  if (progressFill) progressFill.style.width = '0%';
-  if (timeCurrent) timeCurrent.textContent = '0:00';
-  if (timeTotal) timeTotal.textContent = '0:00';
+async function persistSavedList() {
+  if (!window.electronAPI?.savePlaylistTxt) return;
+  await window.electronAPI.savePlaylistTxt(
+    'REMANENTE_PLAYLIST_EXPORT\n' + JSON.stringify(savedPlaylist, null, 2)
+  );
 }
 
+/* ═══════════════════════════════════════════
+   PERSISTIR ESTADO DEL REPRODUCTOR
+   ═══════════════════════════════════════════ */
+function savePlayerState() {
+  if (!window.electronAPI?.savePlayerState) return;
+  window.electronAPI.savePlayerState({
+    volume: videoPlayer.volume,
+    lastVideo: videoPlayer.src || null,
+    lastPosition: videoPlayer.currentTime || 0
+  });
+}
+
+setInterval(savePlayerState, 5000);
+window.addEventListener('beforeunload', savePlayerState);
+
+/* ═══════════════════════════════════════════
+   TABS
+   ═══════════════════════════════════════════ */
+function switchMainTab(tab) {
+  const isDownload = tab === 'download';
+
+  document.getElementById('tab-video').classList.toggle('active', !isDownload);
+  document.getElementById('tab-download').classList.toggle('active', isDownload);
+  document.getElementById('screen-video').classList.toggle('hidden', isDownload);
+  document.getElementById('screen-download').classList.toggle('hidden', !isDownload);
+
+  const playlistCard = document.querySelector('.playlist-card');
+  if (playlistCard) playlistCard.style.display = isDownload ? 'none' : '';
+
+  if (isDownload) {
+    showRecentDownloadsPanel();
+    updateDownloadedLocalList();
+  } else {
+    document.getElementById('recent-downloads-panel')?.remove();
+  }
+}
+
+/* ═══════════════════════════════════════════
+   FILTROS Y BUSQUEDA
+   ═══════════════════════════════════════════ */
 function setListScope(scope) {
   listScope = scope;
-  const btnAll = document.getElementById('btn-filter-all');
-  const btnSaved = document.getElementById('btn-filter-saved');
-
-  if (btnAll) btnAll.classList.toggle('active', scope === 'all');
-  if (btnSaved) btnSaved.classList.toggle('active', scope === 'saved');
+  document.getElementById('btn-filter-all').classList.toggle('active', scope === 'all');
+  document.getElementById('btn-filter-saved').classList.toggle('active', scope === 'saved');
   currentIndex = -1;
   renderPlaylist();
 }
@@ -137,394 +256,510 @@ function handleSearch(val) {
   renderPlaylist();
 }
 
-async function autoSaveSavedList() {
-  if (window.electronAPI && typeof window.electronAPI.savePlaylistTxt === 'function') {
-    let content = "REMANENTE_PLAYLIST_EXPORT\n";
-    content += JSON.stringify(savedPlaylist, null, 2);
-    await window.electronAPI.savePlaylistTxt(content);
-  }
-}
-
+/* ═══════════════════════════════════════════
+   LISTA GUARDADA
+   ═══════════════════════════════════════════ */
 async function clearSavedList() {
-  if (confirm("¿Estás seguro de que deseas limpiar la lista de guardados? Esto borrará el archivo de registro permanente.")) {
-    savedPlaylist = [];
-    await autoSaveSavedList();
-    renderPlaylist();
-  }
+  if (!confirm('Borrar la lista guardada permanentemente?')) return;
+  savedPlaylist = [];
+  await persistSavedList();
+  renderPlaylist();
 }
 
 async function toggleSaveTrack(index, event) {
   event.stopPropagation();
-  let currentDisplayList = getActivePlaylist();
-  let selectedTrack = currentDisplayList[index];
+  const track = getActivePlaylist()[index];
+  if (!track) return;
 
-  if (!selectedTrack) return;
+  const i = savedPlaylist.findIndex(s => s.name === track.name);
+  if (i > -1) savedPlaylist.splice(i, 1);
+  else savedPlaylist.push(track);
 
-  let existIndex = savedPlaylist.findIndex(item => item.name === selectedTrack.name);
-  if (existIndex > -1) {
-    savedPlaylist.splice(existIndex, 1);
-  } else {
-    savedPlaylist.push(selectedTrack);
-  }
-
-  await autoSaveSavedList();
+  await persistSavedList();
   renderPlaylist();
 }
 
-/* ─── Pintar la Lista en Pantalla ─── */
+/* ═══════════════════════════════════════════
+   RENOMBRAR VIDEO (doble clic)
+   ═══════════════════════════════════════════ */
+async function startRename(index, event) {
+  event.stopPropagation();
+  const items = getActivePlaylist();
+  const track = items[index];
+  if (!track) return;
+
+  const listEl = document.getElementById('playlist-list');
+  const itemEls = listEl.querySelectorAll('.playlist-item');
+  const itemEl = itemEls[index];
+  if (!itemEl) return;
+
+  const strongEl = itemEl.querySelector('.item-info strong');
+  if (!strongEl) return;
+
+  const originalName = track.name;
+  strongEl.contentEditable = 'true';
+  strongEl.classList.add('renaming');
+  strongEl.focus();
+
+  const range = document.createRange();
+  range.selectNodeContents(strongEl);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+
+  async function commitRename() {
+    strongEl.contentEditable = 'false';
+    strongEl.classList.remove('renaming');
+    const newName = strongEl.textContent.trim();
+
+    if (!newName || newName === originalName) {
+      strongEl.textContent = originalName;
+      return;
+    }
+
+    const result = await window.electronAPI.renameVideo({ oldUrl: track.url, newName });
+    if (result.success) {
+      const oldUrl = track.url;
+      track.name = newName;
+      track.url = result.newUrl;
+
+      const li = localVideos.find(v => v.url === oldUrl);
+      if (li) { li.name = newName; li.url = result.newUrl; }
+
+      masterPlaylist = [...localVideos];
+      renderPlaylist();
+    } else {
+      alert('No se pudo renombrar: ' + result.error);
+      strongEl.textContent = originalName;
+    }
+  }
+
+  strongEl.addEventListener('blur', commitRename, { once: true });
+  strongEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); strongEl.blur(); }
+    if (e.key === 'Escape') { strongEl.textContent = originalName; strongEl.blur(); }
+  });
+}
+
+/* ═══════════════════════════════════════════
+   RENDER PLAYLIST
+   ═══════════════════════════════════════════ */
 function renderPlaylist() {
   const list = document.getElementById('playlist-list');
   const count = document.getElementById('playlist-count');
   if (!list) return;
 
-  let currentDisplayList = getActivePlaylist();
+  const items = getActivePlaylist();
+  if (count) count.textContent = `${items.length} ${items.length === 1 ? 'video' : 'videos'}`;
 
-  if (count) {
-    count.textContent = currentDisplayList.length + (currentDisplayList.length === 1 ? ' video' : ' videos');
-  }
-
-  if (currentDisplayList.length === 0) {
+  if (!items.length) {
     list.innerHTML = `<div class="empty-state">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <p>No se encontraron videos disponibles.<br>Verifica la carpeta de origen configurada en el sistema principal.</p>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      <p>No se encontraron videos. Verifica la carpeta configurada.</p>
     </div>`;
     return;
   }
 
+  const defaultThumb = `<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.7)">
+    <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+  </svg>`;
+
   list.innerHTML = '';
-  currentDisplayList.forEach((item, i) => {
+  items.forEach((item, i) => {
+    const saved = savedPlaylist.some(s => s.name === item.name);
+    const dur = item.duration ? formatTime(item.duration) : '';
+    const thumbHtml = item.thumbUrl
+      ? `<img src="${item.thumbUrl}" style="width:40px;height:28px;object-fit:cover;border-radius:3px;" onerror="this.style.display='none'">`
+      : defaultThumb;
+
     const div = document.createElement('div');
     div.className = 'playlist-item' + (i === currentIndex ? ' active' : '');
-    div.onclick = () => { loadTrack(i); };
+    div.onclick = () => loadTrack(i);
+    div.ondblclick = (e) => startRename(i, e);
+    div.title = 'Clic: reproducir  |  Doble clic: renombrar';
 
-    const icon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.7)"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> `;
-
-    let isInSaved = savedPlaylist.some(s => s.name === item.name);
-    let saveIconColor = isInSaved ? 'var(--gold)' : 'currentColor';
-
-    const dur = item.duration ? formatTime(item.duration) : '—';
     div.innerHTML = `
       <div class="item-num">
         <span class="idx-num">${i + 1}</span>
         <span class="playing-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="#C9A84C"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
       </div>
-      <div class="item-thumb">${icon}</div>
+      <div class="item-thumb">${thumbHtml}</div>
       <div class="item-info">
         <strong title="${item.name}">${item.name}</strong>
-        <span>${item.author || 'Predicación'}</span>
+        <span>${item.author || 'Predicacion'}</span>
       </div>
-      <span class="item-dur" style="margin-right: 0.5rem;">${dur}</span>
-      <div class="action-icon" onclick="toggleSaveTrack(${i}, event)" title="Guardar/Remover de momentos">
-         <svg width="15" height="15" viewBox="0 0 24 24" fill="${isInSaved ? 'var(--gold)' : 'none'}" stroke="${saveIconColor}" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-      </div>
-    `;
+      <span class="item-dur" style="margin-right:.5rem">${dur}</span>
+      <div class="action-icon" onclick="toggleSaveTrack(${i},event)" title="Guardar/Remover">
+        <svg width="15" height="15" viewBox="0 0 24 24"
+          fill="${saved ? 'var(--gold)' : 'none'}"
+          stroke="${saved ? 'var(--gold)' : 'currentColor'}"
+          stroke-width="2">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>`;
     list.appendChild(div);
   });
+
+  if (currentIndex >= 0) {
+    setTimeout(() => {
+      const activeEl = list.querySelector('.playlist-item.active');
+      if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 80);
+  }
 }
 
-/* ─── Carga de Video Activo ─── */
-function loadTrack(index) {
-  let currentDisplayList = getActivePlaylist();
-  if (index < 0 || index >= currentDisplayList.length) return;
+/* ═══════════════════════════════════════════
+   REPRODUCCION
+   ═══════════════════════════════════════════ */
+function loadTrack(index, autoplay = true) {
+  const items = getActivePlaylist();
+  if (index < 0 || index >= items.length) return;
 
   currentIndex = index;
-  const item = currentDisplayList[index];
-  const player = getActivePlayer();
-  if (!player) return;
+  const item = items[index];
 
-  player.pause();
-  player.src = item.url;
+  videoPlayer.pause();
+  videoPlayer.src = item.url;
+  videoPlayer.volume = parseFloat(document.getElementById('volume-slider')?.value ?? 0.85);
 
-  const volumeSlider = document.getElementById('volume-slider');
-  if (volumeSlider) {
-    player.volume = parseFloat(volumeSlider.value);
-  }
+  updateHeaderBadge(item.name);
 
-  const trackTitle = document.getElementById('track-title');
-  const trackAuthor = document.getElementById('track-author');
-  if (trackTitle) trackTitle.textContent = item.name;
-  if (trackAuthor) trackAuthor.textContent = item.author || 'Predicación';
+  const titleEl = document.getElementById('track-title-vid');
+  if (titleEl) titleEl.textContent = item.name;
 
-  player.addEventListener('loadedmetadata', () => {
-    const timeTotal = document.getElementById('time-total');
-    if (timeTotal) timeTotal.textContent = formatTime(player.duration);
-    item.duration = player.duration;
+  videoPlayer.addEventListener('loadedmetadata', () => {
+    const el = document.getElementById('video-time-current');
+    if (el) el.textContent = `0:00 / ${formatTime(videoPlayer.duration)}`;
+    item.duration = videoPlayer.duration;
+    renderPlaylist();
   }, { once: true });
 
-  const listItems = document.querySelectorAll('.playlist-item');
-  listItems.forEach((li, idx) => { li.classList.toggle('active', idx === currentIndex); });
+  document.querySelectorAll('.playlist-item')
+    .forEach((li, i) => li.classList.toggle('active', i === currentIndex));
 
-  setTimeout(() => {
-    player.play().catch(err => console.log("Reproducción automática prevenida:", err));
-  }, 150);
+  if (autoplay) setTimeout(() => videoPlayer.play().catch(() => { }), 150);
+
+  savePlayerState();
 }
 
 function togglePlay() {
-  const player = getActivePlayer();
-  if (!player || !player.src) return;
-  if (isPlaying) player.pause();
-  else player.play().catch(() => { });
+  if (!videoPlayer?.src) return;
+  isPlaying ? videoPlayer.pause() : videoPlayer.play().catch(() => { });
+}
+
+function prevTrack() {
+  const len = getActivePlaylist().length;
+  if (!len) return;
+  loadTrack(currentIndex > 0 ? currentIndex - 1 : len - 1);
+}
+
+function nextTrack() {
+  const len = getActivePlaylist().length;
+  if (!len) return;
+  const next = isShuffle
+    ? Math.floor(Math.random() * len)
+    : (currentIndex + 1) % len;
+  loadTrack(next);
 }
 
 function forward10() {
-  const player = getActivePlayer();
-  if (player && player.src && player.duration) player.currentTime = Math.min(player.duration, player.currentTime + 10);
+  if (videoPlayer?.duration) videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 10);
 }
 
 function rewind10() {
-  const player = getActivePlayer();
-  if (player && player.src) player.currentTime = Math.max(0, player.currentTime - 10);
+  if (videoPlayer) videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 10);
 }
 
+function setVolume(val) { if (videoPlayer) videoPlayer.volume = val; }
+function toggleMute() { if (videoPlayer) { videoPlayer.muted = !videoPlayer.muted; updateMuteUI(); } }
+function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('btn-shuffle')?.classList.toggle('active', isShuffle); }
+function toggleRepeat() { isRepeat = !isRepeat; document.getElementById('btn-repeat')?.classList.toggle('active', isRepeat); }
+
+function toggleFullscreen() {
+  const wrapper = document.getElementById('screen-video');
+  if (!wrapper) return;
+  document.fullscreenElement ? document.exitFullscreen() : wrapper.requestFullscreen().catch(() => { });
+}
+
+/* ═══════════════════════════════════════════
+   BADGE "REPRODUCIENDO AHORA"
+   ═══════════════════════════════════════════ */
+function updateHeaderBadge(name) {
+  const dot = document.querySelector('#header-badge .dot');
+  const text = document.getElementById('header-badge-text');
+  if (!text) return;
+
+  if (name) {
+    text.textContent = name.length > 38 ? name.substring(0, 38) + '...' : name;
+    if (dot) dot.style.background = '#4ade80';
+  } else {
+    text.textContent = 'En espera';
+    if (dot) dot.style.background = '';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   EVENTOS DEL PLAYER
+   ═══════════════════════════════════════════ */
 if (videoPlayer) {
   videoPlayer.addEventListener('play', () => {
     isPlaying = true;
     updatePlayPauseUI();
-    const overlay = document.getElementById('video-overlay');
-    if (overlay) overlay.classList.add('playing');
+    const name = getActivePlaylist()[currentIndex]?.name;
+    if (name) updateHeaderBadge(name);
   });
 
   videoPlayer.addEventListener('pause', () => {
     isPlaying = false;
     updatePlayPauseUI();
-    const overlay = document.getElementById('video-overlay');
-    if (overlay) overlay.classList.remove('playing');
+  });
+
+  videoPlayer.addEventListener('ended', () => {
+    if (isRepeat) { videoPlayer.currentTime = 0; videoPlayer.play().catch(() => { }); }
+    else nextTrack();
   });
 
   videoPlayer.addEventListener('timeupdate', () => {
     if (!videoPlayer.duration) return;
     const pct = (videoPlayer.currentTime / videoPlayer.duration) * 100;
-    const progressFill = document.getElementById('progress-fill');
-    const timeCurrent = document.getElementById('time-current');
-
-    if (progressFill) progressFill.style.width = pct + '%';
-    if (timeCurrent) timeCurrent.textContent = formatTime(videoPlayer.currentTime);
-  });
-
-  videoPlayer.addEventListener('ended', () => {
-    if (isRepeat) {
-      videoPlayer.currentTime = 0;
-      videoPlayer.play().catch(() => { });
-    } else {
-      nextTrack();
-    }
+    const fill = document.getElementById('video-progress-fill');
+    const time = document.getElementById('video-time-current');
+    if (fill) fill.style.width = pct + '%';
+    if (time) time.textContent = `${formatTime(videoPlayer.currentTime)} / ${formatTime(videoPlayer.duration)}`;
   });
 }
 
+/* ═══════════════════════════════════════════
+   UI HELPERS
+   ═══════════════════════════════════════════ */
 function updatePlayPauseUI() {
-  const iconPlay = document.getElementById('icon-play');
-  const iconPause = document.getElementById('icon-pause');
-  if (iconPlay) iconPlay.classList.toggle('hidden', isPlaying);
-  if (iconPause) iconPause.classList.toggle('hidden', !isPlaying);
+  document.getElementById('vid-icon-play')?.classList.toggle('hidden', isPlaying);
+  document.getElementById('vid-icon-pause')?.classList.toggle('hidden', !isPlaying);
 }
 
-function seekTo(e) {
-  const player = getActivePlayer();
-  if (!player || !player.duration) return;
-  const rect = e.currentTarget.getBoundingClientRect();
-  const pct = (e.clientX - rect.left) / rect.width;
-  player.currentTime = pct * player.duration;
-}
-
-// ─── CONTROL DE ARRASTRE DE LA BARRA DE PROGRESO ───
-// IMPORTANTE: estos listeners se registran UNA SOLA VEZ al cargar la página,
-// NO dentro de seekTo() para evitar acumulación infinita de handlers.
-(function initProgressDrag() {
-  const progressBg = document.getElementById('video-progress-bg');
-  const progressFill = document.getElementById('video-progress-fill');
-  let isDraggingProgress = false;
-
-  function setProgressPosition(event) {
-    if (!videoPlayer || !progressBg || videoPlayer.duration === 0) return;
-    const rect = progressBg.getBoundingClientRect();
-    let x = event.clientX - rect.left;
-    if (x < 0) x = 0;
-    if (x > rect.width) x = rect.width;
-    const percentage = x / rect.width;
-    videoPlayer.currentTime = percentage * videoPlayer.duration;
-    if (progressFill) {
-      progressFill.style.width = (percentage * 100) + '%';
-    }
-  }
-
-  if (progressBg) {
-    progressBg.addEventListener('mousedown', (e) => {
-      isDraggingProgress = true;
-      setProgressPosition(e);
-    });
-  }
-
-  window.addEventListener('mousemove', (e) => {
-    if (isDraggingProgress) setProgressPosition(e);
-  });
-
-  window.addEventListener('mouseup', () => {
-    isDraggingProgress = false;
-  });
-})();
-
-function prevTrack() {
-  let currentDisplayList = getActivePlaylist();
-  if (currentDisplayList.length === 0) return;
-  let newIdx = currentIndex > 0 ? currentIndex - 1 : currentDisplayList.length - 1;
-  loadTrack(newIdx);
-}
-
-function nextTrack() {
-  let currentDisplayList = getActivePlaylist();
-  if (currentDisplayList.length === 0) return;
-  let newIdx;
-  if (isShuffle) {
-    newIdx = Math.floor(Math.random() * currentDisplayList.length);
-  } else {
-    newIdx = (currentIndex + 1) % currentDisplayList.length;
-  }
-  loadTrack(newIdx);
-}
-
-function toggleShuffle() {
-  isShuffle = !isShuffle;
-  const btnShuffle = document.getElementById('btn-shuffle');
-  if (btnShuffle) btnShuffle.classList.toggle('active', isShuffle);
-}
-
-function toggleRepeat() {
-  isRepeat = !isRepeat;
-  const btnRepeat = document.getElementById('btn-repeat');
-  if (btnRepeat) btnRepeat.classList.toggle('active', isRepeat);
-}
-
-function setVolume(val) {
-  if (videoPlayer) videoPlayer.volume = val;
-}
-
-function toggleFullscreen() {
-  const wrapper = document.getElementById('screen-video');
-  if (!wrapper) return;
-  if (!document.fullscreenElement) wrapper.requestFullscreen().catch(() => { });
-  else document.exitFullscreen();
+function updateMuteUI() {
+  const muted = videoPlayer?.muted;
+  document.getElementById('icon-volume')?.classList.toggle('hidden', muted);
+  document.getElementById('icon-mute')?.classList.toggle('hidden', !muted);
 }
 
 document.addEventListener('fullscreenchange', () => {
   const inFs = !!document.fullscreenElement;
-  const expand = document.getElementById('icon-fs-expand');
-  const shrink = document.getElementById('icon-fs-shrink');
-  if (expand) expand.classList.toggle('hidden', inFs);
-  if (shrink) shrink.classList.toggle('hidden', !inFs);
+  document.getElementById('icon-fs-expand')?.classList.toggle('hidden', inFs);
+  document.getElementById('icon-fs-shrink')?.classList.toggle('hidden', !inFs);
 });
 
-function formatTime(s) {
-  if (!s || isNaN(s)) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return m + ':' + (sec < 10 ? '0' : '') + sec;
-}
+/* ═══════════════════════════════════════════
+   BARRA DE PROGRESO (drag)
+   ═══════════════════════════════════════════ */
+(function initProgressDrag() {
+  const bar = document.getElementById('video-progress-bg');
+  const fill = document.getElementById('video-progress-fill');
+  let dragging = false;
 
-// ─── FUNCIÓN PARA DESCARGAR DESDE YOUTUBE ───
-async function actionDownloadYoutube() {
-  const inputUrl = document.getElementById('youtube-url-input');
-  const statusDiv = document.getElementById('download-status');
-  const btnDownload = document.getElementById('btn-download-yt');
-
-  const url = inputUrl.value.trim();
-
-  if (!url) {
-    showDownloadStatus("Por favor, introduce un enlace de YouTube válido.", "error");
-    return;
+  function seek(e) {
+    if (!videoPlayer?.duration || !bar) return;
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    videoPlayer.currentTime = pct * videoPlayer.duration;
+    if (fill) fill.style.width = (pct * 100) + '%';
   }
 
-  // Cambiar estado de la interfaz a "Cargando"
-  btnDownload.disabled = true;
-  showDownloadStatus("Obteniendo video e integrando a la lista... Por favor espera.", "loading");
+  bar?.addEventListener('mousedown', e => { dragging = true; seek(e); });
+  window.addEventListener('mousemove', e => { if (dragging) seek(e); });
+  window.addEventListener('mouseup', () => { dragging = false; });
+})();
 
-  try {
-    // Enviar la URL al proceso Main de Electron para que maneje la descarga con yt-dlp
-    const result = await window.electronAPI.downloadYoutube(url);
+function seekTo(e) {
+  if (!videoPlayer?.duration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  videoPlayer.currentTime = ((e.clientX - rect.left) / rect.width) * videoPlayer.duration;
+}
 
-    if (result.success) {
-      showDownloadStatus("¡Video descargado e indexado con éxito!", "success");
-      inputUrl.value = "";
+/* ═══════════════════════════════════════════
+   ATAJOS DE TECLADO
+   ═══════════════════════════════════════════ */
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (['INPUT', 'TEXTAREA'].includes(tag)) return;
+    if (document.activeElement?.contentEditable === 'true') return;
 
-      // Recargar videos locales y actualizar ambos paneles
-      const media = await window.electronAPI.getLocalMedia();
-      localVideos = (media && Array.isArray(media.videos)) ? media.videos : [];
-      initDefaults();
+    switch (e.key) {
+      case ' ':
+        e.preventDefault(); togglePlay(); break;
+      case 'ArrowLeft':
+        e.preventDefault(); rewind10(); break;
+      case 'ArrowRight':
+        e.preventDefault(); forward10(); break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (videoPlayer) {
+          videoPlayer.volume = Math.min(1, videoPlayer.volume + 0.05);
+          const s = document.getElementById('volume-slider');
+          if (s) s.value = videoPlayer.volume;
+        }
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (videoPlayer) {
+          videoPlayer.volume = Math.max(0, videoPlayer.volume - 0.05);
+          const s = document.getElementById('volume-slider');
+          if (s) s.value = videoPlayer.volume;
+        }
+        break;
+      case 'n': case 'N': nextTrack(); break;
+      case 'p': case 'P': prevTrack(); break;
+      case 'm': case 'M': toggleMute(); break;
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════
+   COLA DE DESCARGAS — PROGRESO REAL
+   ═══════════════════════════════════════════ */
+function handleDownloadProgress(data) {
+  const { jobId, status, percent, speed, eta, size, error, thumbUrl, isPending } = data;
+
+  if (!downloadJobs.has(jobId)) downloadJobs.set(jobId, { isPending });
+  Object.assign(downloadJobs.get(jobId), { status, percent, speed, eta, size, error, thumbUrl });
+
+  renderDownloadQueue();
+
+  if (status === 'done') {
+    setTimeout(async () => {
+      downloadJobs.delete(jobId);
+      renderDownloadQueue();
+      await reloadLocalVideos();
+      masterPlaylist = [...localVideos];
       renderPlaylist();
       updateDownloadedLocalList();
       await refreshRecentPanel();
+    }, 3000);
+  }
 
-    } else {
-      showDownloadStatus("Error al descargar: " + result.error, "error");
+  if (status === 'done' || status === 'error') {
+    const btn = document.getElementById('btn-download-yt');
+    if (btn) btn.disabled = false;
+    if (status === 'done') showDownloadStatus('Video descargado con exito', 'success');
+    if (status === 'error') showDownloadStatus('Error: ' + (error ?? ''), 'error');
+  }
+}
+
+function renderDownloadQueue() {
+  const container = document.getElementById('download-queue-container');
+  if (!container) return;
+
+  if (downloadJobs.size === 0) { container.innerHTML = ''; return; }
+
+  container.innerHTML = '';
+  downloadJobs.forEach((job, jobId) => {
+    const div = document.createElement('div');
+    div.className = 'dq-item';
+
+    // Badge extra si viene de la cola pendiente (nube)
+    const pendingBadge = job.isPending
+      ? `<span class="dq-pending-badge">☁️ Pendiente nube</span>`
+      : '';
+
+    if (job.status === 'starting') {
+      div.innerHTML = `${pendingBadge}<span class="dq-label">Iniciando descarga...</span>`;
+    } else if (job.status === 'progress') {
+      const pct = job.percent ?? 0;
+      div.innerHTML = `
+        ${pendingBadge}
+        <div class="dq-info">
+          <span class="dq-label">${pct.toFixed(1)}%&nbsp;&nbsp;${job.speed ?? ''}&nbsp;&nbsp;ETA ${job.eta ?? ''}</span>
+          <span class="dq-size">${job.size ?? ''}</span>
+        </div>
+        <div class="dq-bar-bg">
+          <div class="dq-bar-fill" style="width:${pct}%"></div>
+        </div>`;
+    } else if (job.status === 'done') {
+      div.innerHTML = `${pendingBadge}<span class="dq-label dq-done">Descarga completada ✓</span>`;
+    } else if (job.status === 'error') {
+      div.innerHTML = `${pendingBadge}<span class="dq-label dq-error">Error: ${job.error ?? ''}</span>`;
     }
-  } catch (error) {
-    console.error("Error en el proceso de descarga:", error);
-    showDownloadStatus("Error de comunicación con el sistema.", "error");
-  } finally {
-    btnDownload.disabled = false;
-  }
+
+    container.appendChild(div);
+  });
 }
 
-// Función auxiliar para mostrar los mensajes de estado estéticos
-function showDownloadStatus(message, type) {
-  const statusDiv = document.getElementById('download-status');
-  statusDiv.style.display = 'block';
-  statusDiv.textContent = message;
+/* ═══════════════════════════════════════════
+   DESCARGA YOUTUBE (manual)
+   ═══════════════════════════════════════════ */
+async function actionDownloadYoutube() {
+  const input = document.getElementById('youtube-url-input');
+  const btnDl = document.getElementById('btn-download-yt');
+  const url = input.value.trim();
 
-  // Limpiar clases anteriores
-  statusDiv.className = "download-status " + type;
+  if (!url) { showDownloadStatus('Introduce un enlace de YouTube valido.', 'error'); return; }
 
-  // Ocultar automáticamente si fue un éxito o error ordinario después de 5 segundos
-  if (type === 'success' || type === 'error') {
-    setTimeout(() => {
-      statusDiv.style.display = 'none';
-    }, 5000);
+  btnDl.disabled = true;
+
+  try {
+    const result = await window.electronAPI.downloadYoutube(url);
+    if (result.success) {
+      input.value = '';
+      showDownloadStatus(`En cola — el progreso aparecera abajo`, 'loading');
+    } else {
+      showDownloadStatus('Error: ' + result.error, 'error');
+      btnDl.disabled = false;
+    }
+  } catch (e) {
+    showDownloadStatus('Error de comunicacion.', 'error');
+    btnDl.disabled = false;
   }
+
+  setTimeout(() => { btnDl.disabled = false; }, 1000);
 }
-/* ─── Tab switch ─── */
-// ─── 1. FUNCIÓN PARA CONTROLAR EL CAMBIO DE PESTAÑAS (TABS) ───
-function switchMainTab(tab) {
-  document.getElementById('tab-video').classList.toggle('active', tab === 'video');
-  document.getElementById('tab-download').classList.toggle('active', tab === 'download');
 
-  document.getElementById('screen-video').classList.toggle('hidden', tab !== 'video');
-  document.getElementById('screen-download').classList.toggle('hidden', tab !== 'download');
+function showDownloadStatus(msg, type) {
+  const el = document.getElementById('download-status');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.className = 'download-status ' + type;
+  if (type !== 'loading') setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
 
-  const playlistCard = document.querySelector('.playlist-card');
+/* ═══════════════════════════════════════════
+   PREVIEW MINIATURA YOUTUBE
+   ═══════════════════════════════════════════ */
+function handleYoutubeUrlInput(url) {
+  const container = document.getElementById('yt-preview-container');
+  const img = document.getElementById('yt-preview-img');
+  const title = document.getElementById('yt-preview-title');
 
-  if (tab === 'download') {
-    if (playlistCard) playlistCard.style.display = 'none';
-    showRecentDownloadsPanel();
-    updateDownloadedLocalList();
+  const match = url.match(/(?:youtu\.be\/|[?&]v=)([^#&?]{11})/);
+  if (match) {
+    img.src = `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+    title.textContent = 'Video Listo para Descargar';
+    container.style.display = 'block';
   } else {
-    if (playlistCard) playlistCard.style.display = '';
-    const recentPanel = document.getElementById('recent-downloads-panel');
-    if (recentPanel) recentPanel.remove();
-    document.getElementById('playlist-label').textContent = 'Lista de Videos';
+    container.style.display = 'none';
   }
 }
 
-// ─── PANEL DERECHO DE DESCARGAS RECIENTES ───
+/* ═══════════════════════════════════════════
+   PANEL DESCARGAS RECIENTES
+   ═══════════════════════════════════════════ */
 async function showRecentDownloadsPanel() {
-  // Evitar duplicados
   if (document.getElementById('recent-downloads-panel')) return;
-
-  const mainLayout = document.querySelector('.main-layout');
-  if (!mainLayout) return;
 
   const panel = document.createElement('div');
   panel.id = 'recent-downloads-panel';
-  panel.className = 'playlist-card'; // mismos estilos que la playlist normal
+  panel.className = 'playlist-card';
   panel.innerHTML = `
     <div class="playlist-header">
       <h2>Descargas Recientes</h2>
-      <span class="playlist-count" id="recent-count">— videos</span>
+      <span class="playlist-count" id="recent-count">—</span>
     </div>
     <div class="playlist-list" id="recent-list">
-      <p style="font-size:0.72rem;color:var(--pearl-muted);padding:12px;">Cargando...</p>
-    </div>
-  `;
-  mainLayout.appendChild(panel);
-
+      <p style="font-size:.72rem;color:var(--pearl-muted);padding:12px">Cargando...</p>
+    </div>`;
+  document.querySelector('.main-layout')?.appendChild(panel);
   await refreshRecentPanel();
 }
 
@@ -535,99 +770,104 @@ async function refreshRecentPanel() {
 
   try {
     const data = await window.electronAPI.getLocalMedia();
-    const allVideos = (data && Array.isArray(data.videos)) ? data.videos : [];
+    const today = new Date().toDateString();
+    const videos = (data?.videos ?? [])
+      .filter(v => v.addedAt && new Date(v.addedAt).toDateString() === today)
+      .sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt));
 
-    // Filtrar solo los de hoy
-    const todayStr = new Date().toDateString();
-    const videos = allVideos.filter(v => {
-      if (!v.addedAt) return false;
-      return new Date(v.addedAt).toDateString() === todayStr;
-    });
+    if (countEl) countEl.textContent = `${videos.length} ${videos.length === 1 ? 'video hoy' : 'videos hoy'}`;
 
-    if (countEl) countEl.textContent = videos.length + (videos.length === 1 ? ' video hoy' : ' videos hoy');
-
-    if (videos.length === 0) {
+    if (!videos.length) {
       listEl.innerHTML = `<div class="empty-state"><p>No hay videos descargados hoy.</p></div>`;
       return;
     }
 
+    const videoIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.8)">
+      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+    </svg>`;
+
     listEl.innerHTML = '';
-    [...videos]
-      .sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
-      .forEach((video, i) => {
-        const hora = new Date(video.addedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-        const div = document.createElement('div');
-        div.className = 'playlist-item';
-        div.style.cursor = 'default';
-        div.innerHTML = `
-          <div class="item-num"><span class="idx-num">${i + 1}</span></div>
-          <div class="item-thumb">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(32,51,160,0.8)">
-              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
-            </svg>
-          </div>
-          <div class="item-info">
-            <strong title="${video.name}">${video.name}</strong>
-            <span style="font-size:0.65rem;color:var(--pearl-muted);">Hoy · ${hora}</span>
-          </div>
-        `;
-        listEl.appendChild(div);
-      });
+    videos.forEach((v, i) => {
+      const hora = new Date(v.addedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+      const div = document.createElement('div');
+      div.className = 'playlist-item';
+
+      const thumbHtml = v.thumbUrl
+        ? `<img src="${v.thumbUrl}" style="width:40px;height:28px;object-fit:cover;border-radius:3px;">`
+        : videoIcon;
+
+      div.innerHTML = `
+        <div class="item-num"><span class="idx-num">${i + 1}</span></div>
+        <div class="item-thumb">${thumbHtml}</div>
+        <div class="item-info">
+          <strong title="${v.name}">${v.name}</strong>
+          <span style="font-size:.65rem;color:var(--pearl-muted)">Hoy &middot; ${hora}</span>
+        </div>`;
+      listEl.appendChild(div);
+    });
   } catch (err) {
-    console.error('Error cargando descargas recientes:', err);
-    listEl.innerHTML = `<p style="font-size:0.72rem;color:#f87171;padding:12px;">Error al leer la carpeta.</p>`;
+    listEl.innerHTML = `<p style="font-size:.72rem;color:#f87171;padding:12px">Error al leer la carpeta.</p>`;
   }
 }
 
-// ─── 2. EXTRAER MINIATURA DE YOUTUBE EN VIVO CUANDO EL USUARIO PEGA LA URL ───
-function handleYoutubeUrlInput(url) {
-  const previewContainer = document.getElementById('yt-preview-container');
-  const previewImg = document.getElementById('yt-preview-img');
-  const previewTitle = document.getElementById('yt-preview-title');
-
-  // Expresión regular para capturar la ID del video de YouTube de cualquier enlace común
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-
-  if (match && match[2].length === 11) {
-    const videoId = match[2];
-    // Usamos el servidor de imágenes oficial de YouTube de alta definición (hqdefault)
-    previewImg.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-    previewTitle.textContent = "Video Listo para Descargar 🎥";
-    previewContainer.style.display = 'block'; // Mostrar la caja
-  } else {
-    // Si borra el input o es inválido, ocultamos la miniatura
-    previewContainer.style.display = 'none';
-  }
-}
-
-// ─── 4. ACTUALIZAR LOS VIDEOS RECIÉN DESCARGADOS EN LA CARPETA LOCAL ───
 async function updateDownloadedLocalList() {
-  const listContainer = document.getElementById('downloaded-local-list');
-  if (!listContainer) return;
+  const container = document.getElementById('downloaded-local-list');
+  if (!container) return;
 
   try {
-    // Llamamos al canal IPC nativo de tu main.js que lee el directorio
     const data = await window.electronAPI.getLocalMedia();
+    const videos = data?.videos ?? [];
 
-    if (data && data.videos && data.videos.length > 0) {
-      listContainer.innerHTML = ""; // Limpiar indicador de carga
-
-      // Listamos los últimos videos encontrados en la carpeta local
-      data.videos.forEach(video => {
-        const item = document.createElement('div');
-        item.className = "local-download-item";
-        item.title = video.name;
-        item.innerHTML = `📄 ${video.name}`;
-        listContainer.appendChild(item);
-      });
-    } else {
-      listContainer.innerHTML = `<p style="font-size:0.68rem; color:var(--pearl-muted);">No se encontraron videos descargados aún.</p>`;
+    if (!videos.length) {
+      container.innerHTML = `<p style="font-size:.68rem;color:var(--pearl-muted)">No hay videos aun.</p>`;
+      return;
     }
-  } catch (error) {
-    console.error("Error cargando videos locales:", error);
-    listContainer.innerHTML = `<p style="font-size:0.68rem; color:#f87171;">No se pudo leer la carpeta local.</p>`;
+
+    container.innerHTML = '';
+    videos.forEach(v => {
+      const item = document.createElement('div');
+      item.className = 'local-download-item';
+      item.title = v.name;
+      item.textContent = 'Video: ' + v.name;
+      container.appendChild(item);
+    });
+  } catch (e) {
+    container.innerHTML = `<p style="font-size:.68rem;color:#f87171">No se pudo leer la carpeta.</p>`;
   }
 }
 
-// showDownloadStatus ya está definida arriba (línea ~485) — no duplicar aquí
+/* ═══════════════════════════════════════════
+   TOAST (notificaciones flotantes)
+   ═══════════════════════════════════════════ */
+function showToast(msg, type = 'info') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = `
+      position:fixed; bottom:24px; right:24px; z-index:9999;
+      display:flex; flex-direction:column; gap:8px;`;
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  const colors = { info: '#3A4DC4', success: '#16a34a', error: '#dc2626' };
+  toast.style.cssText = `
+    background:${colors[type] ?? colors.info};
+    color:#fff; padding:10px 16px; border-radius:8px;
+    font-size:.8rem; font-family:'Lato',sans-serif;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    animation: fadeInUp .25s ease;`;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 5000);
+}
+
+/* ═══════════════════════════════════════════
+   UTIL
+   ═══════════════════════════════════════════ */
+function formatTime(s) {
+  if (!s || isNaN(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
