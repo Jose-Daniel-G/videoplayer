@@ -142,32 +142,34 @@ async function syncCloudPlaylistToSaved() {
 
   try {
     const result = await window.electronAPI.fetchCloudPlaylist();
+
+    // Si la nube devuelve una playlist vacía la ignoramos para no borrar
+    // lo que el usuario tenía guardado localmente.
     if (!result.success || !result.playlist.length) return;
 
     const cloudFilenames = result.playlist; // array de filenames, ej: ["cancion.mp4", ...]
-    let changed = false;
 
+    // Reconstruir savedPlaylist RESPETANDO el orden exacto de la nube.
+    // Solo incluimos los videos que ya existen en la carpeta local.
+    const nuevaPlaylist = [];
     for (const filename of cloudFilenames) {
-      // Buscar en los videos locales el que coincida con este filename
       const localVideo = localVideos.find(v => {
-        // El filename en la nube incluye extensión; el name del video local NO incluye extensión
         const nameWithExt = v.name + getExtension(v.url);
         return nameWithExt === filename || v.name === filename || filename.startsWith(v.name);
       });
-
-      if (!localVideo) continue; // aún no descargado, saltar
-
-      // Solo agregar si no está ya en savedPlaylist
-      const yaGuardado = savedPlaylist.some(s => s.name === localVideo.name);
-      if (!yaGuardado) {
-        savedPlaylist.push(localVideo);
-        changed = true;
-      }
+      if (localVideo) nuevaPlaylist.push(localVideo);
     }
 
-    if (changed) {
+    // Solo actualizar si la playlist de la nube difiere de la local
+    // (comparamos por nombres para detectar cambios de orden o contenido)
+    const localNames = savedPlaylist.map(v => v.name).join('|');
+    const cloudNames = nuevaPlaylist.map(v => v.name).join('|');
+
+    if (localNames !== cloudNames) {
+      savedPlaylist = nuevaPlaylist;
       await persistSavedList();
-      console.log('[sync] Playlist del domingo sincronizada en Guardados ✓');
+      renderPlaylist();
+      console.log('[sync] Playlist del domingo actualizada desde la nube ✓', nuevaPlaylist.map(v => v.name));
     }
   } catch (e) {
     console.warn('[syncCloudPlaylistToSaved] error:', e.message);
