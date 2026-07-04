@@ -90,21 +90,35 @@ function getConfigPath() {
   return path.join(app.getPath("userData"), "config.json");
 }
 function loadConfig() {
+  const fallbackDir = path.join(app.getPath("videos"), "alabanzas");
+  const fallbackConfig = { videosDir: fallbackDir, volume: 0.85, lastVideo: null, lastPosition: 0 };
+
   try {
     const p = getConfigPath();
     if (fs.existsSync(p)) {
-      const saved = JSON.parse(fs.readFileSync(p, "utf8"));
-      if (saved.videosDir && fs.existsSync(saved.videosDir)) return saved;
+      const fileContent = fs.readFileSync(p, "utf8");
+      if (fileContent.trim()) {
+        const saved = JSON.parse(fileContent);
+        // Validamos que tenga la propiedad y que la ruta exista o pueda usarse
+        if (saved && saved.videosDir) {
+          return saved;
+        }
+      }
     }
-  } catch (e) {}
-  const defaultDir =
-    process.platform === "win32"
-      ? "C:\\Users\\" + require("os").userInfo().username + "\\Videos\\alabanzas"
-      : path.join(app.getPath("videos"), "alabanzas");
+  } catch (e) {
+    console.error("[Config] Error al leer o parsear config.json, usando valores por defecto:", e.message);
+  }
+
+  // Si no existe el archivo de configuración o está corrupto, nos aseguramos de crear el directorio dinámico
   try {
-    if (!fs.existsSync(defaultDir)) fs.mkdirSync(defaultDir, { recursive: true });
-  } catch (e) {}
-  return { videosDir: defaultDir, volume: 0.85, lastVideo: null, lastPosition: 0 };
+    if (!fs.existsSync(fallbackDir)) {
+      fs.mkdirSync(fallbackDir, { recursive: true });
+    }
+  } catch (e) {
+    console.error("[Config] No se pudo crear la carpeta dinámica por defecto:", e.message);
+  }
+
+  return fallbackConfig;
 }
 function saveConfig(data) {
   try { fs.writeFileSync(getConfigPath(), JSON.stringify(data, null, 2), "utf8"); } catch (e) {}
@@ -314,28 +328,37 @@ ipcMain.handle("upload-to-cloud", async (event, jsonData) => {
 
 // Leer videos locales
 ipcMain.handle("get-local-media", async () => {
-  const config    = loadConfig();
+  const config = loadConfig() || {}; // <-- Si por alguna razón es undefined, usa un objeto vacío
   const videosDir = config.videosDir || null;
-  const result    = { videos: [], currentFolder: videosDir };
-  if (!videosDir || !fs.existsSync(videosDir)) return result;
+  const result = { videos: [], currentFolder: videosDir };
+  
+  if (!videosDir || !fs.existsSync(videosDir)) {
+    console.warn("[get-local-media] La ruta de videos configurada no existe físicamente:", videosDir);
+    return result; 
+  }
+  
   const thumbsDir = getThumbsDir();
-  fs.readdirSync(videosDir).forEach(file => {
-    const filePath = path.join(videosDir, file);
-    try {
-      const stats = fs.statSync(filePath);
-      if (!stats.isFile()) return;
-      const ext = path.extname(file).toLowerCase();
-      if (![".mp4",".mkv",".avi",".webm",".mov"].includes(ext)) return;
-      const name      = path.parse(file).name;
-      const thumbFile = path.join(thumbsDir, name + ".jpg");
-      result.videos.push({
-        name, author: "Predicación",
-        url: pathToFileURL(filePath).href,
-        addedAt: stats.mtime.toISOString(),
-        thumbUrl: fs.existsSync(thumbFile) ? pathToFileURL(thumbFile).href : null,
-      });
-    } catch (e) { console.warn("Archivo omitido:", file, e.message); }
-  });
+  try {
+    fs.readdirSync(videosDir).forEach(file => {
+      const filePath = path.join(videosDir, file);
+      try {
+        const stats = fs.statSync(filePath);
+        if (!stats.isFile()) return;
+        const ext = path.extname(file).toLowerCase();
+        if (![".mp4",".mkv",".avi",".webm",".mov"].includes(ext)) return;
+        const name      = path.parse(file).name;
+        const thumbFile = path.join(thumbsDir, name + ".jpg");
+        result.videos.push({
+          name, author: "Predicación",
+          url: pathToFileURL(filePath).href,
+          addedAt: stats.mtime.toISOString(),
+          thumbUrl: fs.existsSync(thumbFile) ? pathToFileURL(thumbFile).href : null,
+        });
+      } catch (e) { console.warn("Archivo omitido:", file, e.message); }
+    });
+  } catch (err) {
+    console.error("[get-local-media] Falló la lectura del directorio:", err.message);
+  }
   return result;
 });
 
@@ -387,16 +410,44 @@ ipcMain.handle("load-player-state", async () => {
 });
 
 // Carpeta → JSON
+/* ═══════════════════════════════════════════
+   Manejador Seguro: Carpeta → JSON
+   ═══════════════════════════════════════════ */
 ipcMain.handle("get-folder-json", async (event, folderPath) => {
   try {
-    if (!fs.existsSync(folderPath)) return { success: false, error: "La ruta no existe." };
+    // Si la ruta no viene especificada, abortar de inmediato
+    if (!folderPath) {
+      return { success: false, error: "La ruta proporcionada está vacía." };
+    }
+
+    // AUTORREPARACIÓN: Si la ruta no existe físicamente, intentamos crearla
+    if (!fs.existsSync(folderPath)) {
+      try {
+        fs.mkdirSync(folderPath, { recursive: true });
+        console.log(`[Sistema] Carpeta inexistente regenerada con éxito de forma automática: ${folderPath}`);
+      } catch (mkdirError) {
+        // Si no se puede crear (ej: problemas de permisos), devolvemos el error limpio
+        return { success: false, error: `La ruta no existe y no pudo ser creada: ${mkdirError.message}` };
+      }
+    }
+
+    // Leer el directorio una vez garantizada su existencia
     const filesData = fs.readdirSync(folderPath).map(file => {
       const fp    = path.join(folderPath, file);
       const stats = fs.statSync(fp);
-      return { name: path.parse(file).name, filename: file, extension: path.extname(file),
-               size: stats.size, isFolder: stats.isDirectory(),
-               createdAt: stats.birthtime.toISOString(), updatedAt: stats.mtime.toISOString() };
+      return { 
+        name: path.parse(file).name, 
+        filename: file, 
+        extension: path.extname(file),
+        size: stats.size, 
+        isFolder: stats.isDirectory(),
+        createdAt: stats.birthtime.toISOString(), 
+        updatedAt: stats.mtime.toISOString() 
+      };
     });
+    
     return { success: true, data: filesData };
-  } catch (error) { return { success: false, error: error.message }; }
+  } catch (error) { 
+    return { success: false, error: error.message }; 
+  }
 });
