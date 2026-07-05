@@ -572,6 +572,57 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 /* ═══════════════════════════════════════════
+   AUTO-OCULTAR BARRA DE CONTROLES DEL VIDEO
+   ═══════════════════════════════════════════ */
+(function initControlsAutoHide() {
+  const wrapper = document.getElementById('screen-video');
+  const controls = document.getElementById('video-overlay-controls');
+  if (!wrapper || !controls) return;
+
+  const HIDE_DELAY = 3000; // ms sin movimiento antes de ocultar
+  let hideTimer = null;
+
+  // Transicion suave (el HTML trae opacity:1 fijo inline sin transition)
+  controls.style.transition = 'opacity 0.35s ease';
+
+  function showControls() {
+    controls.style.opacity = '1';
+    controls.style.pointerEvents = 'auto';
+    clearTimeout(hideTimer);
+    if (isPlaying) hideTimer = setTimeout(hideControls, HIDE_DELAY);
+  }
+
+  function hideControls() {
+    if (!isPlaying) return; // nunca ocultar si esta pausado
+    controls.style.opacity = '0';
+    controls.style.pointerEvents = 'none';
+  }
+
+  wrapper.addEventListener('mousemove', showControls);
+  wrapper.addEventListener('mouseenter', showControls);
+
+  wrapper.addEventListener('mouseleave', () => {
+    clearTimeout(hideTimer);
+    if (isPlaying) hideControls();
+  });
+
+  // Si el mouse esta sobre los controles mismos, mantenerlos visibles
+  controls.addEventListener('mousemove', showControls);
+  controls.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimer);
+    controls.style.opacity = '1';
+    controls.style.pointerEvents = 'auto';
+  });
+
+  videoPlayer?.addEventListener('play', showControls);
+  videoPlayer?.addEventListener('pause', () => {
+    clearTimeout(hideTimer);
+    controls.style.opacity = '1';
+    controls.style.pointerEvents = 'auto';
+  });
+})();
+
+/* ═══════════════════════════════════════════
    BARRA DE PROGRESO (drag)
    ═══════════════════════════════════════════ */
 (function initProgressDrag() {
