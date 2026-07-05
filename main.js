@@ -326,6 +326,16 @@ ipcMain.handle("upload-to-cloud", async (event, jsonData) => {
   }
 });
 
+// Subir playlist del domingo a la nube (array de filenames)
+ipcMain.handle("upload-playlist", async (event, filenames) => {
+  try {
+    await jsonbinPut(BIN_PLAYLIST, { playlist: filenames, savedAt: new Date().toISOString() });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Leer videos locales
 ipcMain.handle("get-local-media", async () => {
   const config = loadConfig() || {}; // <-- Si por alguna razón es undefined, usa un objeto vacío

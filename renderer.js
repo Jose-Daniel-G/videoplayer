@@ -203,6 +203,25 @@ async function persistSavedList() {
   await window.electronAPI.savePlaylistTxt(
     'REMANENTE_PLAYLIST_EXPORT\n' + JSON.stringify(savedPlaylist, null, 2)
   );
+  // Sincronizar también con BIN_PLAYLIST para que la app web lo refleje
+  await pushCloudPlaylist();
+}
+
+/**
+ * Sube savedPlaylist a BIN_PLAYLIST en el mismo formato que usa la app web:
+ * array de filenames, ej: ["cancion.mp4", "predicacion.mp4"]
+ */
+async function pushCloudPlaylist() {
+  try {
+    const filenames = savedPlaylist.map(v => {
+      const ext = getExtension(v.url); // ".mp4", ".mkv", etc.
+      return v.name + ext;
+    });
+    await window.electronAPI.uploadPlaylist(filenames);
+    console.log('[cloud] Playlist del domingo subida ✓', filenames);
+  } catch (e) {
+    console.warn('[cloud] No se pudo subir la playlist:', e.message);
+  }
 }
 
 /* ═══════════════════════════════════════════

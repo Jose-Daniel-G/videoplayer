@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Carpeta → JSON para subir a la nube
   getFolderJson: (folderPath)     => ipcRenderer.invoke('get-folder-json', folderPath),
   uploadToCloud: (jsonData)       => ipcRenderer.invoke('upload-to-cloud', jsonData),
+  uploadPlaylist: (filenames)     => ipcRenderer.invoke('upload-playlist', filenames),
   
   // ── NUEVO: Playlist del domingo desde la nube ──────────────────────
   // Descarga la playlist guardada en BIN_PLAYLIST (index-cliente la escribe)
