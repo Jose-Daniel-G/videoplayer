@@ -140,7 +140,19 @@
                 </button>
                 <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.85"
                   class="vid-volume-slider" oninput="setVolume(this.value)">
-                <button class="vid-ctrl-btn" onclick="toggleFullscreen()" title="Pantalla completa">
+                <button id="btn-maximize-main" class="vid-ctrl-btn" onclick="toggleMainMaximize()"
+                  title="Maximizar ventana de control">
+                  <svg id="icon-max-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                  </svg>
+                  <svg id="icon-max-shrink" class="hidden" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <rect x="7" y="4" width="13" height="13" rx="2" />
+                    <path d="M4 17V7a1 1 0 0 1 1-1h10" />
+                  </svg>
+                </button>
+                <button id="btn-fullscreen" class="vid-ctrl-btn" onclick="toggleFullscreen()" title="Pantalla completa">
                   <svg id="icon-fs-expand" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="2">
                     <path

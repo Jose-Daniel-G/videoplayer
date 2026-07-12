@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path    = require("path");
 const fs      = require("fs");
 const { execFile } = require("child_process");
@@ -50,12 +50,16 @@ const getFfmpegPath = () => getBinPath("ffmpeg.exe");
    VENTANA
    ═══════════════════════════════════════════ */
 let mainWindow;
+let projectorWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     icon: path.join(__dirname, "assets", "imresizer-logo.ico"),
+    resizable: true,
+    maximizable: true,
+    fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -71,16 +75,214 @@ function createWindow() {
       enqueuePendingDownloads();
     }, 2000);
   });
+
+  // La ventana principal (de control) NUNCA se maximiza automáticamente
+  // al proyectar (comportamiento tipo OpenLP). Pero el presentador puede
+  // maximizarla cuando quiera: con el botón de la app, con el botón nativo
+  // de maximizar del sistema operativo, o con doble clic en la barra de
+  // título. Avisamos al renderer en cualquiera de esos casos para que el
+  // ícono del botón siempre refleje el estado real de la ventana.
+  mainWindow.on("maximize", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("main-window-maximize-changed", true);
+    }
+  });
+  mainWindow.on("unmaximize", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("main-window-maximize-changed", false);
+    }
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    if (projectorWindow && !projectorWindow.isDestroyed()) projectorWindow.close();
+  });
 }
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Avisar al renderer cada vez que cambie el arreglo de pantallas
+  // (se conecta/desconecta un proyector, TV, segundo monitor, etc.)
+  screen.on("display-added", broadcastDisplays);
+  screen.on("display-removed", broadcastDisplays);
+  screen.on("display-metrics-changed", broadcastDisplays);
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+/* ═══════════════════════════════════════════
+   MULTI-PANTALLA / PROYECCIÓN (estilo OpenLP)
+   ═══════════════════════════════════════════ */
+function serializeDisplays() {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d) => ({
+    id: d.id,
+    bounds: d.bounds,
+    isPrimary: d.id === primary.id,
+  }));
+}
+function getExternalDisplays() {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().filter((d) => d.id !== primary.id);
+}
+function broadcastDisplays() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const list = serializeDisplays();
+    mainWindow.webContents.send("displays-changed", {
+      displays: list,
+      hasExternal: list.some((d) => !d.isPrimary),
+    });
+  }
+  // Si el monitor donde se proyecta se desconectó, cerrar esa ventana
+  if (projectorWindow && !projectorWindow.isDestroyed()) {
+    const stillExists = screen
+      .getAllDisplays()
+      .some((d) => d.id === projectorWindow.__displayId);
+    if (!stillExists) projectorWindow.close();
+  }
+}
+
+// Guardamos el último estado de reproducción conocido. Así, si la ventana
+// de proyección tarda en cargar (o el comando "load" llega antes de que su
+// script esté listo para escucharlo), se lo reenviamos apenas confirme que
+// terminó de cargar — evitando que se quede "en espera" sin mostrar nada.
+let lastProjectorState = { src: null, currentTime: 0, playing: false };
+
+function createProjectorWindow(targetDisplay) {
+  if (projectorWindow && !projectorWindow.isDestroyed()) {
+    projectorWindow.close();
+  }
+  projectorWindow = new BrowserWindow({
+    x: targetDisplay.bounds.x,
+    y: targetDisplay.bounds.y,
+    width: targetDisplay.bounds.width,
+    height: targetDisplay.bounds.height,
+    frame: false,
+    fullscreen: true,
+    autoHideMenuBar: true,
+    backgroundColor: "#000000",
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  projectorWindow.__displayId = targetDisplay.id;
+  projectorWindow.setMenuBarVisibility(false);
+
+  // Apenas la ventana de proyección termina de cargar y su script ya está
+  // escuchando, le reenviamos el estado actual (si había un video cargado).
+  projectorWindow.webContents.once("did-finish-load", () => {
+    if (!projectorWindow || projectorWindow.isDestroyed()) return;
+    if (lastProjectorState.src) {
+      projectorWindow.webContents.send("projector-sync", {
+        action: "load",
+        src: lastProjectorState.src,
+        currentTime: lastProjectorState.currentTime,
+        playing: lastProjectorState.playing,
+      });
+    }
+  });
+
+  projectorWindow.loadFile("projector.html");
+
+  projectorWindow.on("closed", () => {
+    projectorWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("projector-closed");
+    }
+  });
+
+  return projectorWindow;
+}
+
+ipcMain.handle("get-projector-state", async () => {
+  return lastProjectorState;
+});
+
+ipcMain.handle("get-displays", async () => {
+  const list = serializeDisplays();
+  return { displays: list, hasExternal: list.some((d) => !d.isPrimary) };
+});
+
+ipcMain.handle("start-projection", async (event, displayId) => {
+  try {
+    const all = screen.getAllDisplays();
+    let target = all.find((d) => d.id === displayId);
+    if (!target) target = getExternalDisplays()[0];
+    if (!target) {
+      return { success: false, error: "No hay ninguna pantalla externa conectada." };
+    }
+    createProjectorWindow(target);
+    return { success: true, displayId: target.id };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle("stop-projection", async () => {
+  if (projectorWindow && !projectorWindow.isDestroyed()) {
+    projectorWindow.close();
+  }
+  projectorWindow = null;
+  lastProjectorState = { src: null, currentTime: 0, playing: false };
+  return { success: true };
+});
+
+// Reenvía comandos de reproducción (play/pause/seek/cargar video) a la
+// ventana proyectada en la pantalla externa. También mantenemos un
+// "último estado conocido" para poder restaurarlo si la ventana de
+// proyección se crea de nuevo o tarda en quedar lista.
+ipcMain.on("projector-sync", (event, data) => {
+  if (!data || !data.action) return;
+
+  switch (data.action) {
+    case "load":
+      lastProjectorState = {
+        src: data.src || null,
+        currentTime: typeof data.currentTime === "number" ? data.currentTime : 0,
+        playing: !!data.playing,
+      };
+      break;
+    case "play":
+      lastProjectorState.playing = true;
+      break;
+    case "pause":
+      lastProjectorState.playing = false;
+      break;
+    case "seek":
+    case "sync-time":
+      if (typeof data.currentTime === "number") lastProjectorState.currentTime = data.currentTime;
+      break;
+    case "clear":
+      lastProjectorState = { src: null, currentTime: 0, playing: false };
+      break;
+  }
+
+  if (projectorWindow && !projectorWindow.isDestroyed()) {
+    projectorWindow.webContents.send("projector-sync", data);
+  }
+});
+
+// El presentador puede maximizar/restaurar la ventana de control cuando
+// quiera; nunca ocurre automáticamente al proyectar.
+ipcMain.handle("toggle-main-maximize", async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false };
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return { maximized: mainWindow.isMaximized() };
+});
+
+ipcMain.handle("get-main-maximize-state", async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false };
+  return { maximized: mainWindow.isMaximized() };
 });
 
 /* ═══════════════════════════════════════════

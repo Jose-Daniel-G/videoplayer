@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Remanente — Proyección</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      cursor: none;
+    }
+
+    #proj-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: none;
+    }
+
+    #proj-idle {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #4a5578;
+      font-family: 'Cinzel', Georgia, serif;
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      text-align: center;
+      padding: 2rem;
+    }
+  </style>
+</head>
+
+<body>
+  <video id="proj-video" muted playsinline></video>
+  <div id="proj-idle">Remanente del Dios Vivo y Eterno</div>
+  <script src="projector-renderer.js"></script>
+</body>
+
+</html>

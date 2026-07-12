@@ -17,6 +17,11 @@ let isPlaying = false;
 let isShuffle = false;
 let isRepeat = false;
 
+// ── Multi-pantalla / Proyección estilo OpenLP ──
+let externalDisplays = [];   // pantallas distintas a la principal
+let isProjecting = false;    // ¿el video se está transmitiendo a una pantalla externa?
+let lastProjectorSync = 0;   // throttle para corrección de deriva
+
 // Cola visual de descargas: Map<jobId, { status, percent, ... }>
 const downloadJobs = new Map();
 
@@ -75,6 +80,28 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       }
     }
+
+    // ── 4.b Detectar pantallas conectadas (para proyección tipo OpenLP) ─
+    await refreshDisplays();
+    window.electronAPI?.onDisplaysChanged?.((info) => {
+      externalDisplays = (info?.displays || []).filter(d => !d.isPrimary);
+      updateProjectionButtonUI();
+      if (!info?.hasExternal && isProjecting) {
+        // El monitor/proyector externo se desconectó: volvemos al modo normal
+        stopProjectionLocal(false);
+        showToast('🖥️ Pantalla externa desconectada. Proyección detenida.', 'info');
+      }
+    });
+    window.electronAPI?.onProjectorClosed?.(() => {
+      stopProjectionLocal(false);
+    });
+
+    // ── 4.c Estado de maximizado de la ventana de control ──────────────
+    const maxState = await window.electronAPI?.getMainMaximizeState?.();
+    updateMaximizeButtonUI(!!maxState?.maximized);
+    window.electronAPI?.onMainMaximizeChanged?.((maximized) => {
+      updateMaximizeButtonUI(maximized);
+    });
 
     // ── 5. Escuchar progreso de descargas desde main ───────────────────
     window.electronAPI?.onDownloadProgress(handleDownloadProgress);
@@ -461,6 +488,7 @@ function loadTrack(index, autoplay = true) {
 
   if (autoplay) setTimeout(() => videoPlayer.play().catch(() => { }), 150);
 
+  syncProjector('load', { includeSrc: true });
   savePlayerState();
 }
 
@@ -486,10 +514,12 @@ function nextTrack() {
 
 function forward10() {
   if (videoPlayer?.duration) videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 10);
+  syncProjector('seek');
 }
 
 function rewind10() {
   if (videoPlayer) videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 10);
+  syncProjector('seek');
 }
 
 function setVolume(val) { if (videoPlayer) videoPlayer.volume = val; }
@@ -497,10 +527,110 @@ function toggleMute() { if (videoPlayer) { videoPlayer.muted = !videoPlayer.mute
 function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('btn-shuffle')?.classList.toggle('active', isShuffle); }
 function toggleRepeat() { isRepeat = !isRepeat; document.getElementById('btn-repeat')?.classList.toggle('active', isRepeat); }
 
-function toggleFullscreen() {
+/* ═══════════════════════════════════════════
+   PROYECCIÓN EN PANTALLA EXTERNA (estilo OpenLP)
+   Si hay un segundo monitor/proyector conectado, el botón envía el
+   video ahí en pantalla completa. La ventana de control (esta) se
+   queda tal cual, sin maximizarse, salvo que el presentador use el
+   botón "Maximizar ventana de control" a propósito.
+   Si NO hay pantalla externa, el botón funciona como antes:
+   pantalla completa dentro de la misma app.
+   ═══════════════════════════════════════════ */
+async function refreshDisplays() {
+  try {
+    const info = await window.electronAPI?.getDisplays?.();
+    externalDisplays = (info?.displays || []).filter(d => !d.isPrimary);
+  } catch (e) {
+    console.warn('No se pudo obtener información de pantallas:', e.message);
+  } finally {
+    updateProjectionButtonUI();
+  }
+}
+
+function updateProjectionButtonUI() {
+  const btn = document.getElementById('btn-fullscreen');
+  if (!btn) return;
+  const hasExternal = externalDisplays.length > 0;
+
+  btn.title = isProjecting
+    ? 'Detener proyección en pantalla externa'
+    : (hasExternal ? 'Proyectar video en pantalla externa' : 'Pantalla completa');
+
+  const showAsActive = isProjecting || document.fullscreenElement;
+  document.getElementById('icon-fs-expand')?.classList.toggle('hidden', showAsActive);
+  document.getElementById('icon-fs-shrink')?.classList.toggle('hidden', !showAsActive);
+  btn.classList.toggle('active', isProjecting);
+}
+
+async function toggleFullscreen() {
+  // Si ya estamos proyectando, el mismo botón la detiene
+  if (isProjecting) {
+    await stopProjectionLocal(true);
+    return;
+  }
+
+  const hasExternal = externalDisplays.length > 0;
+
+  if (hasExternal && window.electronAPI?.startProjection) {
+    const target = externalDisplays[0];
+    const res = await window.electronAPI.startProjection(target.id);
+    if (res?.success) {
+      isProjecting = true;
+      updateProjectionButtonUI();
+      showToast('🖥️ Transmitiendo video a la pantalla externa', 'info');
+      syncProjector('load', { includeSrc: true });
+      return;
+    }
+    showToast('No se pudo iniciar la proyección: ' + (res?.error || 'error desconocido'), 'error');
+    // Si falla, seguimos con el fullscreen local como respaldo
+  }
+
+  // Sin pantalla externa disponible: comportamiento original (fullscreen local)
   const wrapper = document.getElementById('screen-video');
   if (!wrapper) return;
   document.fullscreenElement ? document.exitFullscreen() : wrapper.requestFullscreen().catch(() => { });
+}
+
+async function stopProjectionLocal(notifyMain) {
+  if (!isProjecting) return;
+  isProjecting = false;
+  updateProjectionButtonUI();
+  if (notifyMain && window.electronAPI?.stopProjection) {
+    await window.electronAPI.stopProjection();
+  }
+  showToast('🖥️ Proyección detenida', 'info');
+}
+
+// Envía comandos de reproducción a la ventana proyectada en la pantalla externa
+function syncProjector(action, opts = {}) {
+  if (!isProjecting || !window.electronAPI?.sendProjectorSync) return;
+  const payload = { action };
+  if (action === 'load' || opts.includeSrc) {
+    payload.src = videoPlayer?.src || null;
+    payload.currentTime = videoPlayer?.currentTime || 0;
+    payload.playing = !!(videoPlayer && !videoPlayer.paused);
+  }
+  if ((action === 'seek' || action === 'sync-time') && videoPlayer) {
+    payload.currentTime = videoPlayer.currentTime || 0;
+  }
+  window.electronAPI.sendProjectorSync(payload);
+}
+
+// El presentador puede maximizar/restaurar la ventana de control cuando
+// quiera; esto es independiente de la proyección (nunca ocurre solo).
+// Funciona igual si se maximiza con este botón, con el botón nativo del
+// sistema operativo, o con doble clic en la barra de título.
+async function toggleMainMaximize() {
+  const res = await window.electronAPI?.toggleMainMaximize?.();
+  updateMaximizeButtonUI(!!res?.maximized);
+}
+
+function updateMaximizeButtonUI(maximized) {
+  const btn = document.getElementById('btn-maximize-main');
+  if (btn) btn.title = maximized ? 'Restaurar tamaño de la ventana' : 'Maximizar ventana de control';
+  document.getElementById('icon-max-expand')?.classList.toggle('hidden', maximized);
+  document.getElementById('icon-max-shrink')?.classList.toggle('hidden', !maximized);
+  btn?.classList.toggle('active', maximized);
 }
 
 /* ═══════════════════════════════════════════
@@ -529,11 +659,13 @@ if (videoPlayer) {
     updatePlayPauseUI();
     const name = getActivePlaylist()[currentIndex]?.name;
     if (name) updateHeaderBadge(name);
+    syncProjector('play');
   });
 
   videoPlayer.addEventListener('pause', () => {
     isPlaying = false;
     updatePlayPauseUI();
+    syncProjector('pause');
   });
 
   videoPlayer.addEventListener('ended', () => {
@@ -548,6 +680,15 @@ if (videoPlayer) {
     const time = document.getElementById('video-time-current');
     if (fill) fill.style.width = pct + '%';
     if (time) time.textContent = `${formatTime(videoPlayer.currentTime)} / ${formatTime(videoPlayer.duration)}`;
+
+    // Corrección periódica de deriva entre la ventana de control y la proyección
+    if (isProjecting) {
+      const now = Date.now();
+      if (now - lastProjectorSync > 3000) {
+        lastProjectorSync = now;
+        syncProjector('sync-time');
+      }
+    }
   });
 }
 
@@ -566,9 +707,7 @@ function updateMuteUI() {
 }
 
 document.addEventListener('fullscreenchange', () => {
-  const inFs = !!document.fullscreenElement;
-  document.getElementById('icon-fs-expand')?.classList.toggle('hidden', inFs);
-  document.getElementById('icon-fs-shrink')?.classList.toggle('hidden', !inFs);
+  updateProjectionButtonUI();
 });
 
 /* ═══════════════════════════════════════════
@@ -647,6 +786,7 @@ function seekTo(e) {
   if (!videoPlayer?.duration) return;
   const rect = e.currentTarget.getBoundingClientRect();
   videoPlayer.currentTime = ((e.clientX - rect.left) / rect.width) * videoPlayer.duration;
+  syncProjector('seek');
 }
 
 /* ═══════════════════════════════════════════

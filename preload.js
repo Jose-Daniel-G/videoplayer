@@ -36,5 +36,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Notificación cuando una descarga pendiente termina o falla
   onPendingDownloadDone: (cb)     => {
     ipcRenderer.on('pending-download-done', (_e, data) => cb(data));
-  }
+  },
+
+  // ── NUEVO: Multi-pantalla / Proyección estilo OpenLP ───────────────
+  getDisplays:        ()          => ipcRenderer.invoke('get-displays'),
+  startProjection:    (displayId) => ipcRenderer.invoke('start-projection', displayId),
+  stopProjection:     ()          => ipcRenderer.invoke('stop-projection'),
+  toggleMainMaximize: ()          => ipcRenderer.invoke('toggle-main-maximize'),
+  getMainMaximizeState: ()        => ipcRenderer.invoke('get-main-maximize-state'),
+  onMainMaximizeChanged: (cb)     => {
+    ipcRenderer.on('main-window-maximize-changed', (_e, maximized) => cb(maximized));
+  },
+  onDisplaysChanged:  (cb)        => {
+    ipcRenderer.on('displays-changed', (_e, data) => cb(data));
+  },
+  onProjectorClosed:  (cb)        => {
+    ipcRenderer.on('projector-closed', () => cb());
+  },
+  // Usado por la ventana principal para enviar comandos al proyector,
+  // y por la propia ventana proyectora (projector.html) para recibirlos.
+  sendProjectorSync:  (data)      => ipcRenderer.send('projector-sync', data),
+  onProjectorSync:    (cb)        => {
+    ipcRenderer.on('projector-sync', (_e, data) => cb(data));
+  },
+  getProjectorState:  ()          => ipcRenderer.invoke('get-projector-state'),
 });
