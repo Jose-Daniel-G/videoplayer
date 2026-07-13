@@ -96,13 +96,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       stopProjectionLocal(false);
     });
 
-    // ── 4.c Estado de maximizado de la ventana de control ──────────────
-    const maxState = await window.electronAPI?.getMainMaximizeState?.();
-    updateMaximizeButtonUI(!!maxState?.maximized);
-    window.electronAPI?.onMainMaximizeChanged?.((maximized) => {
-      updateMaximizeButtonUI(maximized);
-    });
-
     // ── 5. Escuchar progreso de descargas desde main ───────────────────
     window.electronAPI?.onDownloadProgress(handleDownloadProgress);
 
@@ -616,21 +609,22 @@ function syncProjector(action, opts = {}) {
   window.electronAPI.sendProjectorSync(payload);
 }
 
-// El presentador puede maximizar/restaurar la ventana de control cuando
-// quiera; esto es independiente de la proyección (nunca ocurre solo).
-// Funciona igual si se maximiza con este botón, con el botón nativo del
-// sistema operativo, o con doble clic en la barra de título.
-async function toggleMainMaximize() {
-  const res = await window.electronAPI?.toggleMainMaximize?.();
-  updateMaximizeButtonUI(!!res?.maximized);
+// "Modo cine": el video ocupa toda la ventana de control (se ocultan el
+// encabezado y la lista de videos), sin salir de la ventana de la app y
+// sin afectar en absoluto la pantalla externa proyectada, si la hay.
+// El maximizado de la ventana del sistema operativo ya está disponible
+// con el botón nativo junto a "cerrar", así que este botón no lo toca.
+function toggleCinemaMode() {
+  const active = document.body.classList.toggle('cinema-mode');
+  updateCinemaButtonUI(active);
 }
 
-function updateMaximizeButtonUI(maximized) {
+function updateCinemaButtonUI(active) {
   const btn = document.getElementById('btn-maximize-main');
-  if (btn) btn.title = maximized ? 'Restaurar tamaño de la ventana' : 'Maximizar ventana de control';
-  document.getElementById('icon-max-expand')?.classList.toggle('hidden', maximized);
-  document.getElementById('icon-max-shrink')?.classList.toggle('hidden', !maximized);
-  btn?.classList.toggle('active', maximized);
+  if (btn) btn.title = active ? 'Salir del video ampliado' : 'Ampliar video en la ventana';
+  document.getElementById('icon-max-expand')?.classList.toggle('hidden', active);
+  document.getElementById('icon-max-shrink')?.classList.toggle('hidden', !active);
+  btn?.classList.toggle('active', active);
 }
 
 /* ═══════════════════════════════════════════
@@ -824,6 +818,12 @@ function initKeyboardShortcuts() {
       case 'n': case 'N': nextTrack(); break;
       case 'p': case 'P': prevTrack(); break;
       case 'm': case 'M': toggleMute(); break;
+      case 'Escape':
+        if (document.body.classList.contains('cinema-mode')) {
+          document.body.classList.remove('cinema-mode');
+          updateCinemaButtonUI(false);
+        }
+        break;
     }
   });
 }

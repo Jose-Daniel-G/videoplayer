@@ -1,4 +1,4 @@
-  :root {
+:root {
     --navy: #0B1628;
     --navy-mid: #162236;
     --navy-light: #1E304A;
@@ -55,9 +55,12 @@
 
   .app {
     position: relative; z-index: 1;
-    max-width: 1260px;
+    max-width: 96vw;
     margin: 0 auto;
     padding: 1.5rem 1.5rem 3rem;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
 
   /* ─── Header ─── */
@@ -189,6 +192,39 @@
     header { flex-direction: column; text-align: center; }
     .gold-rule { margin: 0.6rem auto 0; }
     .now-badge { display: none; }
+  }
+
+  /* ─── Modo cine: el video ocupa toda la ventana de control ───
+     Se activa/desactiva con el botón de "ampliar video" en la barra
+     de controles. No es pantalla completa del sistema operativo (la
+     barra de título de Windows sigue visible) y no afecta en nada a
+     la pantalla externa proyectada, si la hay. */
+  body.cinema-mode .app {
+    max-width: 100vw;
+    padding: 0;
+  }
+  body.cinema-mode header,
+  body.cinema-mode .tabs,
+  body.cinema-mode .playlist-card {
+    display: none !important;
+  }
+  body.cinema-mode .main-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
+  }
+  body.cinema-mode .player-card {
+    height: 100%;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+  }
+  body.cinema-mode .video-wrapper {
+    aspect-ratio: unset;
+    flex: 1;
+    min-height: 0;
   }
 
   /* ─── Player card ─── */
